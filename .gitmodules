@@ -1,0 +1,9 @@
+[submodule "submodules/glfw"]
+	path = submodules/glfw
+	url = https://github.com/glfw/glfw.git
+[submodule "submodules/stb"]
+	path = submodules/stb
+	url = https://github.com/nothings/stb.git
+[submodule "submodules/astral-ocean"]
+	path = submodules/astral-ocean
+	url = https://github.com/Thurstag/astral-ocean.git
