@@ -29,7 +29,7 @@ int main(int argc, char* argv[]) {
 		ao::vulkan::WindowSettings("Textured rectangle", 1280, 720, true),
 		ao::vulkan::CoreSettings(std::thread::hardware_concurrency(), true)
 	);
-	ao::vulkan::AOEngine* engine;
+	ao::vulkan::Engine* engine;
 
 	try {
 		engine = new TriangleDemo(settings);

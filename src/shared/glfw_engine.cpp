@@ -45,11 +45,11 @@ void ao::vulkan::GLFWEngine::freeVulkan() {
 	// Free module
 	this->metrics.reset();
 
-	ao::vulkan::AOEngine::freeVulkan();
+	ao::vulkan::Engine::freeVulkan();
 }
 
 void ao::vulkan::GLFWEngine::initVulkan() {
-	ao::vulkan::AOEngine::initVulkan();
+	ao::vulkan::Engine::initVulkan();
 
 	// Init metric module
 	this->metrics = std::make_unique<ao::vulkan::MetricModule>(this->device);
@@ -66,7 +66,7 @@ void ao::vulkan::GLFWEngine::render() {
 
 	// Render
 	cpuFrame->start();
-	ao::vulkan::AOEngine::render();
+	ao::vulkan::Engine::render();
 	cpuFrame->stop();
 	fps->increment();
 
@@ -127,16 +127,15 @@ void ao::vulkan::GLFWEngine::updateCommandBuffers() {
 		// Execute drawing functions
 		int index = this->frameBufferIndex;
 		for (auto& function : functions) {
-			/* TODO: futures.push_back(this->commandBufferPool.push([&](int id) {
+			futures.push_back(this->commandBufferPool.push([&](int id) {
 				return function(index, inheritanceInfo, helpers);
-			}));*/
-			secondaryCommands.push_back(function(index, inheritanceInfo, helpers));
+			}));
 		}
 
 		// Wait execution & add command buffer
-		/* TODO: for (auto& future : futures) {
+		for (auto& future : futures) {
 			secondaryCommands.push_back(future.get());
-		}*/
+		}
 
 		// Pass commands to current command buffer
 		currentCommand.executeCommands(secondaryCommands);

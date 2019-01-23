@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-#include <ao/vulkan/engine/ao_engine.h>
+#include <ao/vulkan/engine/engine.h>
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
@@ -15,9 +15,9 @@
 #include "utilities/glfw.h"
 
 namespace ao::vulkan {
-	class GLFWEngine : public virtual AOEngine {
+	class GLFWEngine : public virtual Engine {
 	public:
-		explicit GLFWEngine(EngineSettings settings) : AOEngine(settings), window(nullptr) {};
+		explicit GLFWEngine(EngineSettings settings) : Engine(settings), window(nullptr) {};
 		virtual ~GLFWEngine();
 	protected:
 		GLFWwindow* window;

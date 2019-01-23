@@ -33,7 +33,7 @@ public:
 
 	explicit TriangleDemo(ao::vulkan::EngineSettings settings) : 
 		ao::vulkan::GLFWEngine(settings), 
-		ao::vulkan::AOEngine(settings), 
+		ao::vulkan::Engine(settings),
 		vertices({
 			{ { 0.0f, -0.5f }, { 1.0f, 0.0f, 0.0f } },
 			{ {0.5f, 0.5f}, {0.0f, 1.0f, 0.0f} },
