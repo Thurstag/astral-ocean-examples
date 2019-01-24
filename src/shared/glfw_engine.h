@@ -15,27 +15,29 @@
 #include "utilities/glfw.h"
 
 namespace ao::vulkan {
-	class GLFWEngine : public virtual Engine {
-	public:
-		explicit GLFWEngine(EngineSettings settings) : Engine(settings), window(nullptr) {};
-		virtual ~GLFWEngine();
-	protected:
-		GLFWwindow* window;
+    class GLFWEngine : public virtual Engine {
+       public:
+        explicit GLFWEngine(EngineSettings settings) : Engine(settings), window(nullptr){};
+        virtual ~GLFWEngine();
 
-		void initWindow() override;
-		void initSurface(vk::SurfaceKHR& surface) override;
-		void freeWindow() override;
-		bool isIconified() const override;
+       protected:
+        GLFWwindow* window;
 
-		void freeVulkan() override;
-		void initVulkan() override;
-		void render() override;
-		bool loopingCondition() const override;
-		void waitMaximized() override;
+        void initWindow() override;
+        void initSurface(vk::SurfaceKHR& surface) override;
+        void freeWindow() override;
+        bool isIconified() const override;
 
-		std::vector<char const*> instanceExtensions() const override;
-		void updateCommandBuffers() override;
-	private:
-		std::unique_ptr<MetricModule> metrics;
-	};
-}
+        void freeVulkan() override;
+        void initVulkan() override;
+        void render() override;
+        bool loopingCondition() const override;
+        void waitMaximized() override;
+
+        std::vector<char const*> instanceExtensions() const override;
+        void updateCommandBuffers() override;
+
+       private:
+        std::unique_ptr<MetricModule> metrics;
+    };
+}  // namespace ao::vulkan

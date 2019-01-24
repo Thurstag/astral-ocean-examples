@@ -11,40 +11,37 @@
 #define GLM_FORCE_RADIANS 1
 
 #include <ao/core/exception/exception.h>
-#include <ao/vulkan/engine/settings.h>
 #include <ao/core/logger/logger.h>
+#include <ao/vulkan/engine/settings.h>
 
 #include "triangle.h"
 
-struct Main{};
+struct Main {};
 
 int main(int argc, char* argv[]) {
-	ao::core::Logger::Init();
+    ao::core::Logger::Init();
 
-	// Get LOGGER
-	ao::core::Logger LOGGER = ao::core::Logger::GetInstance<Main>();
+    // Get LOGGER
+    ao::core::Logger LOGGER = ao::core::Logger::GetInstance<Main>();
 
-	// Define settings
-	ao::vulkan::EngineSettings settings(
-		ao::vulkan::WindowSettings("Textured rectangle", 1280, 720, true),
-		ao::vulkan::CoreSettings(std::thread::hardware_concurrency(), true)
-	);
-	ao::vulkan::Engine* engine;
+    // Define settings
+    ao::vulkan::EngineSettings settings(ao::vulkan::WindowSettings("Textured rectangle", 1280, 720, true), ao::vulkan::CoreSettings(true));
+    ao::vulkan::Engine* engine;
 
-	try {
-		engine = new TriangleDemo(settings);
+    try {
+        engine = new TriangleDemo(settings);
 
-		// Run engine
-		engine->run();
-	} catch (ao::core::Exception & e) {
-		LOGGER << ao::core::LogLevel::fatal << e;
-	} catch (std::exception& e) {
-		LOGGER << ao::core::LogLevel::fatal << ao::core::Exception(e.what(), false);
-	} catch (...) {
-		LOGGER << ao::core::LogLevel::fatal << "Unknown exception";
-	}
+        // Run engine
+        engine->run();
+    } catch (ao::core::Exception& e) {
+        LOGGER << ao::core::Logger::Level::fatal << e;
+    } catch (std::exception& e) {
+        LOGGER << ao::core::Logger::Level::fatal << ao::core::Exception(e.what(), false);
+    } catch (...) {
+        LOGGER << ao::core::Logger::Level::fatal << "Unknown exception";
+    }
 
-	// Free engine
-	delete engine;
-	return 0;
+    // Free engine
+    delete engine;
+    return 0;
 }

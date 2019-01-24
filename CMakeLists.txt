@@ -16,7 +16,6 @@ set(SUBMODULES stb glfw astral-ocean)
 set(glfw_INCLUDE_DIR "${AO_EX_SUBMODULES_DIR}/glfw/include")
 set(stb_INCLUDE_DIR "${AO_EX_SUBMODULES_DIR}/stb")
 set(astral-ocean_INCLUDE_DIR "${AO_EX_SUBMODULES_DIR}/astral-ocean/include")
-include_directories("D:/Dev_Environment_C++/astral-ocean/submodules/CTPL")  # TODO: REMOVE ME
 
 # Disable GLFW unwanted builds
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
