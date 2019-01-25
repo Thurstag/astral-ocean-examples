@@ -34,7 +34,7 @@ class RectangleDemo : public virtual ao::vulkan::GLFWEngine {
 
     std::vector<UniformBufferObject> _uniformBuffers;
 
-    explicit RectangleDemo(ao::vulkan::EngineSettings settings)
+    explicit RectangleDemo(std::shared_ptr<ao::vulkan::EngineSettings> settings)
         : ao::vulkan::GLFWEngine(settings),
           ao::vulkan::Engine(settings),
           vertices({{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},

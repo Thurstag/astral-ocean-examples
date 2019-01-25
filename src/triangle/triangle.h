@@ -31,7 +31,7 @@ class TriangleDemo : public virtual ao::vulkan::GLFWEngine {
     std::unique_ptr<ao::vulkan::TupleBuffer<Vertex>> vertexBuffer;
     std::unique_ptr<ao::vulkan::TupleBuffer<u16>> indexBuffer;
 
-    explicit TriangleDemo(ao::vulkan::EngineSettings settings)
+    explicit TriangleDemo(std::shared_ptr<ao::vulkan::EngineSettings> settings)
         : ao::vulkan::GLFWEngine(settings),
           ao::vulkan::Engine(settings),
           vertices({{{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}}, {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}}, {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}}),

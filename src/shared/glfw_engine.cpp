@@ -4,6 +4,8 @@
 
 #include "glfw_engine.h"
 
+#include <fmt/format.h>
+
 #include "metrics/counter_metric.hpp"
 #include "metrics/duration_metric.hpp"
 
@@ -19,11 +21,17 @@ void ao::vulkan::GLFWEngine::initWindow() {
 
     // Define properties
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_RESIZABLE, this->settings_.window.rezisable ? GLFW_TRUE : GLFW_FALSE);
+    glfwWindowHint(GLFW_RESIZABLE,
+                   this->settings_->get<bool>(ao::vulkan::settings::WindowResizable, std::make_optional<bool>(true)) ? GLFW_TRUE : GLFW_FALSE);
+
+    if (!this->settings_->exists(ao::vulkan::settings::WindowTitle)) {
+        this->settings_->get<std::string>(ao::vulkan::settings::WindowTitle) = std::string("Undefined");
+    }
 
     // Create window
-    this->window = glfwCreateWindow(static_cast<int>(this->settings_.window.width), static_cast<int>(this->settings_.window.height),
-                                    this->settings_.window.name.c_str(), nullptr, nullptr);
+    this->window = glfwCreateWindow(static_cast<int>(this->settings_->get<u64>(ao::vulkan::settings::WindowWidth)),
+                                    static_cast<int>(this->settings_->get<u64>(ao::vulkan::settings::WindowHeight)),
+                                    this->settings_->get<std::string>(ao::vulkan::settings::WindowTitle).c_str(), nullptr, nullptr);
 }
 
 void ao::vulkan::GLFWEngine::initSurface(vk::SurfaceKHR& surface) {
@@ -75,7 +83,9 @@ void ao::vulkan::GLFWEngine::render() {
 
     // Display metrics
     if (fps->hasToBeReset()) {
-        glfwSetWindowTitle(this->window, this->metrics->toString().c_str());
+        glfwSetWindowTitle(
+            this->window,
+            fmt::format("{} [{}]", this->settings_->get<std::string>(ao::vulkan::settings::WindowTitle), this->metrics->toString()).c_str());
 
         // Reset metrics
         this->metrics->reset();

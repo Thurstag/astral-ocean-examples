@@ -15,9 +15,14 @@
 #include "utilities/glfw.h"
 
 namespace ao::vulkan {
+    namespace settings {
+        constexpr char* WindowResizable = "window.resizable";
+        constexpr char* WindowTitle = "window.title";
+    }  // namespace settings
+
     class GLFWEngine : public virtual Engine {
        public:
-        explicit GLFWEngine(EngineSettings settings) : Engine(settings), window(nullptr){};
+        explicit GLFWEngine(std::shared_ptr<EngineSettings> settings) : Engine(settings), window(nullptr){};
         virtual ~GLFWEngine();
 
        protected:

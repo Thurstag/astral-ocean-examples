@@ -25,9 +25,13 @@ int main(int argc, char* argv[]) {
     ao::core::Logger LOGGER = ao::core::Logger::GetInstance<Main>();
 
     // Define settings
-    ao::vulkan::EngineSettings settings(ao::vulkan::WindowSettings("Rectangle", 1280, 720, true), ao::vulkan::CoreSettings(true));
-    ao::vulkan::Engine* engine;
+    std::shared_ptr<ao::vulkan::EngineSettings> settings = std::make_shared<ao::vulkan::EngineSettings>();
+    settings->get<std::string>(ao::vulkan::settings::WindowTitle) = std::string("Rectangle");
+    settings->get<u64>(ao::vulkan::settings::WindowWidth) = 1280;
+    settings->get<u64>(ao::vulkan::settings::WindowHeight) = 720;
+    settings->get<bool>(ao::vulkan::settings::ValidationLayers) = true;
 
+    ao::vulkan::Engine* engine;
     try {
         engine = new RectangleDemo(settings);
 
