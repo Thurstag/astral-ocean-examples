@@ -4,8 +4,6 @@
 
 #include "metric_module.h"
 
-#define QUERY_COUNT 128
-
 #include <ao/core/utilities/pointers.h>
 #include <boost/algorithm/string/join.hpp>
 
@@ -13,8 +11,7 @@ ao::vulkan::MetricModule::MetricModule(std::weak_ptr<Device> device) : device(de
     auto _device = ao::core::shared(this->device);
 
     // Create query pool
-    this->_queryPool = _device->logical.createQueryPool(
-        vk::QueryPoolCreateInfo(vk::QueryPoolCreateFlags(), vk::QueryType::eTimestamp, QUERY_COUNT));  // TODO: CHANGE COUNT
+    this->_queryPool = _device->logical.createQueryPool(vk::QueryPoolCreateInfo(vk::QueryPoolCreateFlags(), vk::QueryType::eTimestamp, 128));
 }
 
 ao::vulkan::MetricModule::~MetricModule() {
@@ -50,11 +47,11 @@ vk::QueryPool ao::vulkan::MetricModule::queryPool() {
     return this->_queryPool;
 }
 
-std::string ao::vulkan::MetricModule::toString() {
+std::string ao::vulkan::MetricModule::str() {
     std::vector<std::string> strings;
 
     for (auto& pair : this->metrics) {
-        strings.push_back(fmt::format("{}: {}", pair.first, pair.second->toString()));
+        strings.push_back(fmt::format("{}: {}", pair.first, pair.second->str()));
     }
 
     return boost::algorithm::join(strings, " - ");

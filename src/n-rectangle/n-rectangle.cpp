@@ -2,7 +2,10 @@
 // Licensed under GPLv3 or any later version
 // Refer to the LICENSE.md file included.
 
-#include "rectangle.h"
+#include "n-rectangle.h"
+
+#define RECTANGLE_COUNT 10
+static_assert(RECTANGLE_COUNT <= 10);  // if RECTANGLE_COUNT exceeds 10 it will exceed descriptor layouts max count
 
 RectangleDemo::~RectangleDemo() {
     this->rectangleBuffer.reset();
@@ -11,7 +14,7 @@ RectangleDemo::~RectangleDemo() {
 
 void RectangleDemo::setUpRenderPass() {
     // Define attachments
-    std::array<vk::AttachmentDescription, 1> attachments;
+    std::array<vk::AttachmentDescription, 2> attachments;
     attachments[0]
         .setFormat(this->swapchain->color_format)
         .setSamples(vk::SampleCountFlagBits::e1)
@@ -21,14 +24,25 @@ void RectangleDemo::setUpRenderPass() {
         .setStencilStoreOp(vk::AttachmentStoreOp::eDontCare)
         .setInitialLayout(vk::ImageLayout::eUndefined)
         .setFinalLayout(vk::ImageLayout::ePresentSrcKHR);
+    attachments[1]
+        .setFormat(this->device->depth_format)
+        .setSamples(vk::SampleCountFlagBits::e1)
+        .setLoadOp(vk::AttachmentLoadOp::eClear)
+        .setStoreOp(vk::AttachmentStoreOp::eDontCare)
+        .setStencilLoadOp(vk::AttachmentLoadOp::eDontCare)
+        .setStencilStoreOp(vk::AttachmentStoreOp::eDontCare)
+        .setInitialLayout(vk::ImageLayout::eUndefined)
+        .setFinalLayout(vk::ImageLayout::eDepthStencilAttachmentOptimal);
 
     // Define references
     vk::AttachmentReference colorReference = vk::AttachmentReference(0, vk::ImageLayout::eColorAttachmentOptimal);
+    vk::AttachmentReference depthReference = vk::AttachmentReference(1, vk::ImageLayout::eDepthStencilAttachmentOptimal);
 
     vk::SubpassDescription subpass = vk::SubpassDescription()
                                          .setPipelineBindPoint(vk::PipelineBindPoint::eGraphics)
                                          .setColorAttachmentCount(1)
-                                         .setPColorAttachments(&colorReference);
+                                         .setPColorAttachments(&colorReference)
+                                         .setPDepthStencilAttachment(&depthReference);
     vk::SubpassDependency dependency = vk::SubpassDependency()
                                            .setSrcSubpass(VK_SUBPASS_EXTERNAL)
                                            .setDstSubpass(0)
@@ -100,7 +114,13 @@ void RectangleDemo::setUpPipelines() {
                                                     dynamicStateEnables.data());
 
     // Depth and stencil state
-    vk::PipelineDepthStencilStateCreateInfo depthStencilState;
+    vk::PipelineDepthStencilStateCreateInfo depthStencilState =
+        vk::PipelineDepthStencilStateCreateInfo()
+            .setDepthTestEnable(VK_TRUE)
+            .setDepthWriteEnable(VK_TRUE)
+            .setDepthCompareOp(vk::CompareOp::eLessOrEqual)
+            .setBack(vk::StencilOpState(vk::StencilOp::eKeep, vk::StencilOp::eKeep, vk::StencilOp::eKeep, vk::CompareOp::eAlways));
+    depthStencilState.setFront(depthStencilState.back);
 
     // Multi sampling state
     vk::PipelineMultisampleStateCreateInfo multisampleState;
@@ -141,7 +161,7 @@ void RectangleDemo::setUpVulkanBuffers() {
             ->update(this->vertices.data(), this->indices.data()));
 
     this->uniformBuffer = std::unique_ptr<ao::vulkan::DynamicArrayBuffer<UniformBufferObject>>(
-        (new ao::vulkan::BasicDynamicArrayBuffer<UniformBufferObject>(this->swapchain->buffers.size(), this->device))
+        (new ao::vulkan::BasicDynamicArrayBuffer<UniformBufferObject>(this->swapchain->buffers.size() * RECTANGLE_COUNT, this->device))
             ->init(vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, vk::MemoryPropertyFlagBits::eHostVisible,
                    ao::vulkan::Buffer::CalculateUBOAligmentSize(this->device->physical, sizeof(UniformBufferObject))));
 
@@ -149,13 +169,13 @@ void RectangleDemo::setUpVulkanBuffers() {
     this->uniformBuffer->map();
 
     // Resize uniform buffers vector
-    this->_uniformBuffers.resize(this->swapchain->buffers.size());
+    this->_uniformBuffers.resize(this->swapchain->buffers.size() * RECTANGLE_COUNT);
 }
 
 void RectangleDemo::createSecondaryCommandBuffers() {
     // Allocate buffers
     std::vector<vk::CommandBuffer> buffers = this->device->logical.allocateCommandBuffers(
-        vk::CommandBufferAllocateInfo(this->swapchain->command_pool, vk::CommandBufferLevel::eSecondary, 1));
+        vk::CommandBufferAllocateInfo(this->swapchain->command_pool, vk::CommandBufferLevel::eSecondary, RECTANGLE_COUNT));
 
     // Add to container
     this->swapchain->commands["secondary"] = ao::vulkan::structs::CommandData(buffers, this->swapchain->command_pool);
@@ -167,29 +187,33 @@ void RectangleDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceI
         vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eRenderPassContinue).setPInheritanceInfo(&inheritanceInfo);
     ao::vulkan::TupleBuffer<Vertex, u16>* rectangle = this->rectangleBuffer.get();
 
-    // Draw in command
-    auto& commandBuffer = this->swapchain->commands["secondary"].buffers[0];
-    commandBuffer.begin(beginInfo);
-    {
-        // Set viewport & scissor
-        commandBuffer.setViewport(0, vk::Viewport(0, 0, static_cast<float>(this->swapchain->current_extent.width),
-                                                  static_cast<float>(this->swapchain->current_extent.height), 0, 1));
-        commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(), this->swapchain->current_extent));
+    // Draw in commands (TODO: Parallel mode)
+    for (size_t i = 0; i < RECTANGLE_COUNT; i++) {
+        auto& commandBuffer = this->swapchain->commands["secondary"].buffers[i];
 
-        // Bind pipeline
-        commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, this->pipeline->pipelines[0]);
+        commandBuffer.begin(beginInfo);
+        {
+            // Set viewport & scissor
+            commandBuffer.setViewport(0, vk::Viewport(0, 0, static_cast<float>(this->swapchain->current_extent.width),
+                                                      static_cast<float>(this->swapchain->current_extent.height), 0, 1));
+            commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(), this->swapchain->current_extent));
 
-        // Draw rectangle
-        commandBuffer.bindVertexBuffers(0, rectangle->buffer(), {0});
-        commandBuffer.bindIndexBuffer(rectangle->buffer(), rectangle->offset(1), vk::IndexType::eUint16);
-        commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->pipeline->layouts[0], 0, this->descriptorSets[frameIndex], {});
+            // Bind pipeline
+            commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, this->pipeline->pipelines[0]);
 
-        commandBuffer.drawIndexed(static_cast<u32>(this->indices.size()), 1, 0, 0, 0);
+            // Draw rectangle
+            commandBuffer.bindVertexBuffers(0, rectangle->buffer(), {0});
+            commandBuffer.bindIndexBuffer(rectangle->buffer(), rectangle->offset(1), vk::IndexType::eUint16);
+            commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->pipeline->layouts[0], 0,
+                                             this->descriptorSets[(i * this->swapchain->buffers.size()) + frameIndex], {});
+
+            commandBuffer.drawIndexed(static_cast<u32>(this->indices.size()), 1, 0, 0, 0);
+        }
+        commandBuffer.end();
+
+        // Pass to primary
+        primaryCmd.executeCommands(commandBuffer);
     }
-    commandBuffer.end();
-
-    // Pass to primary
-    primaryCmd.executeCommands(commandBuffer);
 }
 
 void RectangleDemo::updateUniformBuffers() {
@@ -197,23 +221,32 @@ void RectangleDemo::updateUniformBuffers() {
         this->clock = std::chrono::system_clock::now();
         this->clockInit = true;
 
+        // Generate vector of rotations
+        std::srand(std::time(nullptr));
+        for (size_t i = 0; i < RECTANGLE_COUNT; i++) {
+            this->rotations.push_back(std::make_pair(static_cast<float>((std::rand() % (180 - 10)) + 10), glm::vec3(0.f, 1.0f, 1.0f)));
+        }
+
         return;
     }
 
     // Delta time
     float deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(std::chrono::system_clock::now() - this->clock).count();
 
-    // Update uniform buffer
-    this->_uniformBuffers[this->swapchain->frame_index].model =
-        glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    this->_uniformBuffers[this->swapchain->frame_index].view =
-        glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    this->_uniformBuffers[this->swapchain->frame_index].proj =
-        glm::perspective(glm::radians(45.0f), this->swapchain->current_extent.width / (float)this->swapchain->current_extent.height, 0.1f, 10.0f);
-    this->_uniformBuffers[this->swapchain->frame_index].proj[1][1] *= -1;  // Adapt for vulkan
+    // Update uniform buffers
+    for (size_t i = 0; i < RECTANGLE_COUNT; i++) {
+        this->_uniformBuffers[(i * this->swapchain->buffers.size()) + this->swapchain->frame_index].model =
+            glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(this->rotations[i].first), this->rotations[i].second);
+        this->_uniformBuffers[(i * this->swapchain->buffers.size()) + this->swapchain->frame_index].view =
+            glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        this->_uniformBuffers[(i * this->swapchain->buffers.size()) + this->swapchain->frame_index].proj = glm::perspective(
+            glm::radians(45.0f), this->swapchain->current_extent.width / static_cast<float>(this->swapchain->current_extent.height), 0.1f, 10.0f);
+        this->_uniformBuffers[(i * this->swapchain->buffers.size()) + this->swapchain->frame_index].proj[1][1] *= -1;  // Adapt for vulkan
 
-    // Update buffer
-    this->uniformBuffer->updateFragment(this->swapchain->frame_index, &this->_uniformBuffers[this->swapchain->frame_index]);
+        // Update buffer
+        this->uniformBuffer->updateFragment((i * this->swapchain->buffers.size()) + this->swapchain->frame_index,
+                                            &this->_uniformBuffers[(i * this->swapchain->buffers.size()) + this->swapchain->frame_index]);
+    }
 }
 
 vk::QueueFlags RectangleDemo::queueFlags() const {
@@ -228,7 +261,7 @@ void RectangleDemo::createDescriptorSetLayouts() {
     vk::DescriptorSetLayoutCreateInfo createInfo(vk::DescriptorSetLayoutCreateFlags(), 1, &binding);
 
     // Create layouts
-    for (size_t i = 0; i < this->swapchain->buffers.size(); i++) {
+    for (size_t i = 0; i < this->swapchain->buffers.size() * RECTANGLE_COUNT; i++) {
         this->descriptorSetLayouts.push_back(this->device->logical.createDescriptorSetLayout(createInfo));
     }
 }
@@ -237,19 +270,19 @@ void RectangleDemo::createDescriptorPools() {
     vk::DescriptorPoolSize poolSize(vk::DescriptorType::eUniformBuffer, static_cast<u32>(this->swapchain->buffers.size()));
 
     // Create pool
-    this->descriptorPools.push_back(this->device->logical.createDescriptorPool(
-        vk::DescriptorPoolCreateInfo(vk::DescriptorPoolCreateFlags(), static_cast<u32>(this->swapchain->buffers.size()), 1, &poolSize)));
+    this->descriptorPools.push_back(this->device->logical.createDescriptorPool(vk::DescriptorPoolCreateInfo(
+        vk::DescriptorPoolCreateFlags(), static_cast<u32>(this->swapchain->buffers.size() * RECTANGLE_COUNT), 1, &poolSize)));
 }
 
 void RectangleDemo::createDescriptorSets() {
-    vk::DescriptorSetAllocateInfo allocateInfo(this->descriptorPools[0], static_cast<u32>(this->swapchain->buffers.size()),
+    vk::DescriptorSetAllocateInfo allocateInfo(this->descriptorPools[0], static_cast<u32>(this->swapchain->buffers.size() * RECTANGLE_COUNT),
                                                this->descriptorSetLayouts.data());
 
     // Create sets
     this->descriptorSets = this->device->logical.allocateDescriptorSets(allocateInfo);
 
     // Configure
-    for (size_t i = 0; i < this->swapchain->buffers.size(); i++) {
+    for (size_t i = 0; i < this->swapchain->buffers.size() * RECTANGLE_COUNT; i++) {
         vk::DescriptorBufferInfo bufferInfo(this->uniformBuffer->buffer(), this->uniformBuffer->offset(i), sizeof(UniformBufferObject));
         this->device->logical.updateDescriptorSets(
             vk::WriteDescriptorSet(this->descriptorSets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &bufferInfo), {});

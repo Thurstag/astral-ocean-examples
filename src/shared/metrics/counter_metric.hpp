@@ -29,8 +29,9 @@ namespace ao::vulkan {
         /// <summary>
         /// Method to increment count
         /// </summary>
-        void increment() {
-            this->count++;
+        /// <param name="count">Count</param>
+        void increment(Type count = 1) {
+            this->count += count;
         }
 
         /// <summary>
@@ -50,7 +51,7 @@ namespace ao::vulkan {
             }
         }
 
-        std::string toString() override {
+        std::string str() override {
             return fmt::format("{0}", this->old);
         }
 

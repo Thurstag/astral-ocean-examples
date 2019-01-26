@@ -1,5 +1,5 @@
 # Define executables
-set(DEMOS triangle rectangle textured-rectangle)
+set(DEMOS triangle n-rectangle rectangle depth-rectangle textured-rectangle)
 
 # Define a function that can re-create sub-directories in visual studio
 function(create_sub_directories FILE_LIST CURRENT_DIRECTORY BASE_DIRECTORY)

@@ -14,7 +14,7 @@
 #include <ao/core/logger/logger.h>
 #include <ao/vulkan/engine/settings.h>
 
-#include "textured_rectangle.h"
+#include "n-rectangle.h"
 
 struct Main {};
 
@@ -26,14 +26,15 @@ int main(int argc, char* argv[]) {
 
     // Define settings
     std::shared_ptr<ao::vulkan::EngineSettings> settings = std::make_shared<ao::vulkan::EngineSettings>();
-    settings->get<std::string>(ao::vulkan::settings::WindowTitle) = std::string("Tex-Rectangle");
+    settings->get<std::string>(ao::vulkan::settings::WindowTitle) = std::string("N Rectangles");
     settings->get<u64>(ao::vulkan::settings::WindowWidth) = 1280;
     settings->get<u64>(ao::vulkan::settings::WindowHeight) = 720;
     settings->get<bool>(ao::vulkan::settings::ValidationLayers) = true;
+    settings->get<bool>(ao::vulkan::settings::StencilBuffer) = true;
 
     ao::vulkan::Engine* engine;
     try {
-        engine = new TexturedRectangle(settings);
+        engine = new RectangleDemo(settings);
 
         // Run engine
         engine->run();

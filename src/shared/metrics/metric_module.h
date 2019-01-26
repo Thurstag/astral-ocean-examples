@@ -57,7 +57,7 @@ namespace ao::vulkan {
         /// Method to string
         /// </summary>
         /// <returns>String representation</returns>
-        std::string toString();
+        std::string str();
 
        private:
         std::unordered_map<std::string, Metric*> metrics;

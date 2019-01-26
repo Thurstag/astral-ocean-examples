@@ -13,41 +13,35 @@ TexturedRectangle::~TexturedRectangle() {
 }
 
 void TexturedRectangle::setUpRenderPass() {
-    std::array<vk::AttachmentDescription, 2> attachments;
+    // Define attachments
+    std::array<vk::AttachmentDescription, 1> attachments;
+    attachments[0]
+        .setFormat(this->swapchain->color_format)
+        .setSamples(vk::SampleCountFlagBits::e1)
+        .setLoadOp(vk::AttachmentLoadOp::eClear)
+        .setStoreOp(vk::AttachmentStoreOp::eStore)
+        .setStencilLoadOp(vk::AttachmentLoadOp::eDontCare)
+        .setStencilStoreOp(vk::AttachmentStoreOp::eDontCare)
+        .setInitialLayout(vk::ImageLayout::eUndefined)
+        .setFinalLayout(vk::ImageLayout::ePresentSrcKHR);
 
-    // Color attachment
-    attachments[0] = vk::AttachmentDescription(vk::AttachmentDescriptionFlags(), this->swapchain->color_format, vk::SampleCountFlagBits::e1,
-                                               vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare,
-                                               vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined, vk::ImageLayout::ePresentSrcKHR);
+    // Define references
+    vk::AttachmentReference colorReference = vk::AttachmentReference(0, vk::ImageLayout::eColorAttachmentOptimal);
 
-    // Depth attachment
-    attachments[1] =
-        vk::AttachmentDescription(vk::AttachmentDescriptionFlags(), this->device->depth_format, vk::SampleCountFlagBits::e1,
-                                  vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eClear,
-                                  vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined, vk::ImageLayout::eDepthStencilAttachmentOptimal);
+    vk::SubpassDescription subpass = vk::SubpassDescription()
+                                         .setPipelineBindPoint(vk::PipelineBindPoint::eGraphics)
+                                         .setColorAttachmentCount(1)
+                                         .setPColorAttachments(&colorReference);
+    vk::SubpassDependency dependency = vk::SubpassDependency()
+                                           .setSrcSubpass(VK_SUBPASS_EXTERNAL)
+                                           .setDstSubpass(0)
+                                           .setSrcStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
+                                           .setDstStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
+                                           .setDstAccessMask(vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite);
 
-    vk::AttachmentReference colorReference(0, vk::ImageLayout::eColorAttachmentOptimal);
-    vk::AttachmentReference depthReference(1, vk::ImageLayout::eDepthStencilAttachmentOptimal);
-
-    vk::SubpassDescription subpassDescription(vk::SubpassDescriptionFlags(), vk::PipelineBindPoint::eGraphics, 0, nullptr, 1, &colorReference,
-                                              nullptr, &depthReference);
-
-    // Subpass dependencies for layout transitions
-    std::array<vk::SubpassDependency, 2> dependencies;
-
-    dependencies[0] =
-        vk::SubpassDependency(VK_SUBPASS_EXTERNAL, 0, vk::PipelineStageFlagBits::eBottomOfPipe, vk::PipelineStageFlagBits::eColorAttachmentOutput,
-                              vk::AccessFlagBits::eMemoryRead, vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite,
-                              vk::DependencyFlagBits::eByRegion);
-
-    dependencies[1] =
-        vk::SubpassDependency(0, VK_SUBPASS_EXTERNAL, vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::PipelineStageFlagBits::eBottomOfPipe,
-                              vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite, vk::AccessFlagBits::eMemoryRead,
-                              vk::DependencyFlagBits::eByRegion);
-
+    // Create render pass
     this->renderPass = this->device->logical.createRenderPass(
-        vk::RenderPassCreateInfo(vk::RenderPassCreateFlags(), static_cast<u32>(attachments.size()), attachments.data(), 1, &subpassDescription,
-                                 static_cast<u32>(dependencies.size()), dependencies.data()));
+        vk::RenderPassCreateInfo(vk::RenderPassCreateFlags(), static_cast<u32>(attachments.size()), attachments.data(), 1, &subpass, 1, &dependency));
 }
 
 void TexturedRectangle::createPipelineLayouts() {
@@ -109,13 +103,7 @@ void TexturedRectangle::setUpPipelines() {
                                                     dynamicStateEnables.data());
 
     // Depth and stencil state
-    vk::PipelineDepthStencilStateCreateInfo depthStencilState =
-        vk::PipelineDepthStencilStateCreateInfo()
-            .setDepthTestEnable(VK_TRUE)
-            .setDepthWriteEnable(VK_TRUE)
-            .setDepthCompareOp(vk::CompareOp::eLessOrEqual)
-            .setBack(vk::StencilOpState(vk::StencilOp::eKeep, vk::StencilOp::eKeep, vk::StencilOp::eKeep, vk::CompareOp::eAlways));
-    depthStencilState.setFront(depthStencilState.back);
+    vk::PipelineDepthStencilStateCreateInfo depthStencilState;
 
     // Multi sampling state
     vk::PipelineMultisampleStateCreateInfo multisampleState;
@@ -127,11 +115,7 @@ void TexturedRectangle::setUpPipelines() {
     vk::VertexInputBindingDescription vertexInputBinding = vk::VertexInputBindingDescription().setStride(sizeof(Vertex));
 
     // Inpute attribute bindings
-    std::array<vk::VertexInputAttributeDescription, 2> vertexInputAttributes;
-
-    vertexInputAttributes[0].setFormat(vk::Format::eR32G32Sfloat).setOffset(offsetof(Vertex, pos));
-
-    vertexInputAttributes[1].setLocation(1).setFormat(vk::Format::eR32G32B32Sfloat).setOffset(offsetof(Vertex, color));
+    std::array<vk::VertexInputAttributeDescription, 2> vertexInputAttributes = Vertex::attributeDescriptions();
 
     // Vertex input state used for pipeline creation
     vk::PipelineVertexInputStateCreateInfo vertexInputState(vk::PipelineVertexInputStateCreateFlags(), 1, &vertexInputBinding,
@@ -211,41 +195,36 @@ void TexturedRectangle::createSecondaryCommandBuffers() {
     this->swapchain->commands["secondary"] = ao::vulkan::structs::CommandData(buffers, this->swapchain->command_pool);
 }
 
-std::vector<ao::vulkan::DrawInCommandBuffer> TexturedRectangle::updateSecondaryCommandBuffers() {
-    std::vector<ao::vulkan::DrawInCommandBuffer> commands;
+void TexturedRectangle::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex,
+                                                       vk::CommandBuffer& primaryCmd) {
+    // Create info
+    vk::CommandBufferBeginInfo beginInfo =
+        vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eRenderPassContinue).setPInheritanceInfo(&inheritanceInfo);
+    ao::vulkan::TupleBuffer<Vertex, u16>* rectangle = this->rectangleBuffer.get();
 
-    commands.push_back([this](int frameIndex, vk::CommandBufferInheritanceInfo const& inheritance,
-                              std::pair<std::array<vk::ClearValue, 2>, vk::Rect2D> const& helpers) {
-        vk::CommandBufferBeginInfo beginInfo =
-            vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eRenderPassContinue).setPInheritanceInfo(&inheritance);
-        vk::Viewport viewPort(0, 0, static_cast<float>(helpers.second.extent.width), static_cast<float>(helpers.second.extent.height), 0, 1);
+    // Draw in command
+    auto& commandBuffer = this->swapchain->commands["secondary"].buffers[0];
+    commandBuffer.begin(beginInfo);
+    {
+        // Set viewport & scissor
+        commandBuffer.setViewport(0, vk::Viewport(0, 0, static_cast<float>(this->swapchain->current_extent.width),
+                                                  static_cast<float>(this->swapchain->current_extent.height), 0, 1));
+        commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(), this->swapchain->current_extent));
 
-        vk::CommandBuffer& commandBuffer = this->swapchain->commands["secondary"].buffers[0];
-        ao::vulkan::TupleBuffer<Vertex, u16>* rectangle = this->rectangleBuffer.get();
+        // Bind pipeline
+        commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, this->pipeline->pipelines[0]);
 
-        // Draw in command
-        commandBuffer.begin(beginInfo);
-        {
-            // Set viewport & scissor
-            commandBuffer.setViewport(0, viewPort);
-            commandBuffer.setScissor(0, helpers.second);
+        // Draw rectangle
+        commandBuffer.bindVertexBuffers(0, rectangle->buffer(), {0});
+        commandBuffer.bindIndexBuffer(rectangle->buffer(), rectangle->offset(1), vk::IndexType::eUint16);
+        commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->pipeline->layouts[0], 0, this->descriptorSets[frameIndex], {});
 
-            // Bind pipeline
-            commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, this->pipeline->pipelines[0]);
+        commandBuffer.drawIndexed(static_cast<u32>(this->indices.size()), 1, 0, 0, 0);
+    }
+    commandBuffer.end();
 
-            // Draw rectangle
-            commandBuffer.bindVertexBuffers(0, rectangle->buffer(), {0});
-            commandBuffer.bindIndexBuffer(rectangle->buffer(), rectangle->offset(1), vk::IndexType::eUint16);
-            commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->pipeline->layouts[0], 0, this->descriptorSets[frameIndex], {});
-
-            commandBuffer.drawIndexed(static_cast<u32>(this->indices.size()), 1, 0, 0, 0);
-        }
-        commandBuffer.end();
-
-        return commandBuffer;
-    });
-
-    return commands;
+    // Pass to primary
+    primaryCmd.executeCommands(commandBuffer);
 }
 
 void TexturedRectangle::updateUniformBuffers() {
@@ -260,15 +239,16 @@ void TexturedRectangle::updateUniformBuffers() {
     float deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(std::chrono::system_clock::now() - this->clock).count();
 
     // Update uniform buffer
-    this->_uniformBuffers[this->frameBufferIndex].model = glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    this->_uniformBuffers[this->frameBufferIndex].view =
+    this->_uniformBuffers[this->swapchain->frame_index].model =
+        glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    this->_uniformBuffers[this->swapchain->frame_index].view =
         glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    this->_uniformBuffers[this->frameBufferIndex].proj =
+    this->_uniformBuffers[this->swapchain->frame_index].proj =
         glm::perspective(glm::radians(45.0f), this->swapchain->current_extent.width / (float)this->swapchain->current_extent.height, 0.1f, 10.0f);
-    this->_uniformBuffers[this->frameBufferIndex].proj[1][1] *= -1;  // Adapt for vulkan
+    this->_uniformBuffers[this->swapchain->frame_index].proj[1][1] *= -1;  // Adapt for vulkan
 
     // Update buffer
-    this->uniformBuffer->updateFragment(this->frameBufferIndex, &this->_uniformBuffers[this->frameBufferIndex]);
+    this->uniformBuffer->updateFragment(this->swapchain->frame_index, &this->_uniformBuffers[this->swapchain->frame_index]);
 }
 
 vk::QueueFlags TexturedRectangle::queueFlags() const {

@@ -2,16 +2,16 @@
 // Licensed under GPLv3 or any later version
 // Refer to the LICENSE.md file included.
 
-#include "rectangle.h"
+#include "depth-rectangle.h"
 
-RectangleDemo::~RectangleDemo() {
+DepthRectangleDemo::~DepthRectangleDemo() {
     this->rectangleBuffer.reset();
     this->uniformBuffer.reset();
 }
 
-void RectangleDemo::setUpRenderPass() {
+void DepthRectangleDemo::setUpRenderPass() {
     // Define attachments
-    std::array<vk::AttachmentDescription, 1> attachments;
+    std::array<vk::AttachmentDescription, 2> attachments;
     attachments[0]
         .setFormat(this->swapchain->color_format)
         .setSamples(vk::SampleCountFlagBits::e1)
@@ -21,14 +21,25 @@ void RectangleDemo::setUpRenderPass() {
         .setStencilStoreOp(vk::AttachmentStoreOp::eDontCare)
         .setInitialLayout(vk::ImageLayout::eUndefined)
         .setFinalLayout(vk::ImageLayout::ePresentSrcKHR);
+    attachments[1]
+        .setFormat(this->device->depth_format)
+        .setSamples(vk::SampleCountFlagBits::e1)
+        .setLoadOp(vk::AttachmentLoadOp::eClear)
+        .setStoreOp(vk::AttachmentStoreOp::eDontCare)
+        .setStencilLoadOp(vk::AttachmentLoadOp::eDontCare)
+        .setStencilStoreOp(vk::AttachmentStoreOp::eDontCare)
+        .setInitialLayout(vk::ImageLayout::eUndefined)
+        .setFinalLayout(vk::ImageLayout::eDepthStencilAttachmentOptimal);
 
     // Define references
     vk::AttachmentReference colorReference = vk::AttachmentReference(0, vk::ImageLayout::eColorAttachmentOptimal);
+    vk::AttachmentReference depthReference = vk::AttachmentReference(1, vk::ImageLayout::eDepthStencilAttachmentOptimal);
 
     vk::SubpassDescription subpass = vk::SubpassDescription()
                                          .setPipelineBindPoint(vk::PipelineBindPoint::eGraphics)
                                          .setColorAttachmentCount(1)
-                                         .setPColorAttachments(&colorReference);
+                                         .setPColorAttachments(&colorReference)
+                                         .setPDepthStencilAttachment(&depthReference);
     vk::SubpassDependency dependency = vk::SubpassDependency()
                                            .setSrcSubpass(VK_SUBPASS_EXTERNAL)
                                            .setDstSubpass(0)
@@ -41,14 +52,14 @@ void RectangleDemo::setUpRenderPass() {
         vk::RenderPassCreateInfo(vk::RenderPassCreateFlags(), static_cast<u32>(attachments.size()), attachments.data(), 1, &subpass, 1, &dependency));
 }
 
-void RectangleDemo::createPipelineLayouts() {
+void DepthRectangleDemo::createPipelineLayouts() {
     this->pipeline->layouts.resize(1);
 
     this->pipeline->layouts.front() = this->device->logical.createPipelineLayout(vk::PipelineLayoutCreateInfo(
         vk::PipelineLayoutCreateFlags(), static_cast<u32>(this->descriptorSetLayouts.size()), this->descriptorSetLayouts.data()));
 }
 
-void RectangleDemo::setUpPipelines() {
+void DepthRectangleDemo::setUpPipelines() {
     // Create shadermodules
     ao::vulkan::ShaderModule module(this->device);
 
@@ -100,7 +111,8 @@ void RectangleDemo::setUpPipelines() {
                                                     dynamicStateEnables.data());
 
     // Depth and stencil state
-    vk::PipelineDepthStencilStateCreateInfo depthStencilState;
+    vk::PipelineDepthStencilStateCreateInfo depthStencilState =
+        vk::PipelineDepthStencilStateCreateInfo().setDepthTestEnable(VK_TRUE).setDepthWriteEnable(VK_TRUE).setDepthCompareOp(vk::CompareOp::eLess);
 
     // Multi sampling state
     vk::PipelineMultisampleStateCreateInfo multisampleState;
@@ -133,7 +145,7 @@ void RectangleDemo::setUpPipelines() {
     this->pipeline->pipelines = this->device->logical.createGraphicsPipelines(this->pipeline->cache, pipelineCreateInfo);
 }
 
-void RectangleDemo::setUpVulkanBuffers() {
+void DepthRectangleDemo::setUpVulkanBuffers() {
     // Create vertices & indices
     this->rectangleBuffer = std::unique_ptr<ao::vulkan::TupleBuffer<Vertex, u16>>(
         (new ao::vulkan::StagingTupleBuffer<Vertex, u16>(this->device, vk::CommandBufferUsageFlagBits::eOneTimeSubmit))
@@ -152,7 +164,7 @@ void RectangleDemo::setUpVulkanBuffers() {
     this->_uniformBuffers.resize(this->swapchain->buffers.size());
 }
 
-void RectangleDemo::createSecondaryCommandBuffers() {
+void DepthRectangleDemo::createSecondaryCommandBuffers() {
     // Allocate buffers
     std::vector<vk::CommandBuffer> buffers = this->device->logical.allocateCommandBuffers(
         vk::CommandBufferAllocateInfo(this->swapchain->command_pool, vk::CommandBufferLevel::eSecondary, 1));
@@ -161,7 +173,8 @@ void RectangleDemo::createSecondaryCommandBuffers() {
     this->swapchain->commands["secondary"] = ao::vulkan::structs::CommandData(buffers, this->swapchain->command_pool);
 }
 
-void RectangleDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex, vk::CommandBuffer& primaryCmd) {
+void DepthRectangleDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex,
+                                                        vk::CommandBuffer& primaryCmd) {
     // Create info
     vk::CommandBufferBeginInfo beginInfo =
         vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eRenderPassContinue).setPInheritanceInfo(&inheritanceInfo);
@@ -192,7 +205,7 @@ void RectangleDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceI
     primaryCmd.executeCommands(commandBuffer);
 }
 
-void RectangleDemo::updateUniformBuffers() {
+void DepthRectangleDemo::updateUniformBuffers() {
     if (!this->clockInit) {
         this->clock = std::chrono::system_clock::now();
         this->clockInit = true;
@@ -216,11 +229,11 @@ void RectangleDemo::updateUniformBuffers() {
     this->uniformBuffer->updateFragment(this->swapchain->frame_index, &this->_uniformBuffers[this->swapchain->frame_index]);
 }
 
-vk::QueueFlags RectangleDemo::queueFlags() const {
+vk::QueueFlags DepthRectangleDemo::queueFlags() const {
     return ao::vulkan::GLFWEngine::queueFlags() | vk::QueueFlagBits::eTransfer;  // Enable transfer
 }
 
-void RectangleDemo::createDescriptorSetLayouts() {
+void DepthRectangleDemo::createDescriptorSetLayouts() {
     // Create binding
     vk::DescriptorSetLayoutBinding binding(0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex);
 
@@ -233,7 +246,7 @@ void RectangleDemo::createDescriptorSetLayouts() {
     }
 }
 
-void RectangleDemo::createDescriptorPools() {
+void DepthRectangleDemo::createDescriptorPools() {
     vk::DescriptorPoolSize poolSize(vk::DescriptorType::eUniformBuffer, static_cast<u32>(this->swapchain->buffers.size()));
 
     // Create pool
@@ -241,7 +254,7 @@ void RectangleDemo::createDescriptorPools() {
         vk::DescriptorPoolCreateInfo(vk::DescriptorPoolCreateFlags(), static_cast<u32>(this->swapchain->buffers.size()), 1, &poolSize)));
 }
 
-void RectangleDemo::createDescriptorSets() {
+void DepthRectangleDemo::createDescriptorSets() {
     vk::DescriptorSetAllocateInfo allocateInfo(this->descriptorPools[0], static_cast<u32>(this->swapchain->buffers.size()),
                                                this->descriptorSetLayouts.data());
 

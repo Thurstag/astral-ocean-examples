@@ -60,7 +60,7 @@ void ao::vulkan::GLFWEngine::freeVulkan() {
 void ao::vulkan::GLFWEngine::initVulkan() {
     ao::vulkan::Engine::initVulkan();
 
-    // Init metric module
+    // Init metric module (TODO: DrawCall per second)
     this->metrics = std::make_unique<ao::vulkan::MetricModule>(this->device);
     this->metrics->add("CPU", new ao::vulkan::BasicDurationMetric<std::chrono::duration<double, std::milli>>("ms"));
     this->metrics->add("GPU", new ao::vulkan::CommandBufferMetric<std::milli>(
@@ -84,8 +84,7 @@ void ao::vulkan::GLFWEngine::render() {
     // Display metrics
     if (fps->hasToBeReset()) {
         glfwSetWindowTitle(
-            this->window,
-            fmt::format("{} [{}]", this->settings_->get<std::string>(ao::vulkan::settings::WindowTitle), this->metrics->toString()).c_str());
+            this->window, fmt::format("{} [{}]", this->settings_->get<std::string>(ao::vulkan::settings::WindowTitle), this->metrics->str()).c_str());
 
         // Reset metrics
         this->metrics->reset();
@@ -106,42 +105,31 @@ std::vector<char const*> ao::vulkan::GLFWEngine::instanceExtensions() const {
 
 void ao::vulkan::GLFWEngine::updateCommandBuffers() {
     // Get current command buffer/frame
-    vk::CommandBuffer& currentCommand = this->swapchain->commands["primary"].buffers[this->frameBufferIndex];
-    vk::Framebuffer& currentFrame = this->frames[this->frameBufferIndex];
-    auto& helpers = this->swapchain->command_helpers;
-    int index = this->frameBufferIndex;
-    std::mutex cmdMutex;
+    vk::CommandBuffer& command = this->swapchain->commands["primary"].buffers[this->swapchain->frame_index];
+    vk::Framebuffer& frame = this->swapchain->currentFrame();
 
     // Create info
-    vk::CommandBufferBeginInfo beginInfo(vk::CommandBufferUsageFlagBits::eRenderPassContinue);
+    vk::CommandBufferBeginInfo begin_info(vk::CommandBufferUsageFlagBits::eRenderPassContinue);
 
-    vk::RenderPassBeginInfo renderPassInfo(this->renderPass, currentFrame, this->swapchain->command_helpers.second,
-                                           static_cast<u32>(this->swapchain->command_helpers.first.size()),
-                                           this->swapchain->command_helpers.first.data());
+    std::array<vk::ClearValue, 2> clearValues;
+    clearValues[0].setColor(vk::ClearColorValue());
+    clearValues[1].setDepthStencil(vk::ClearDepthStencilValue(1));
 
-    currentCommand.begin(&beginInfo);
-    currentCommand.resetQueryPool(this->metrics->queryPool(), 0, 2);
-    currentCommand.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, this->metrics->queryPool(), 0);
-    currentCommand.beginRenderPass(renderPassInfo, vk::SubpassContents::eSecondaryCommandBuffers);
+    vk::RenderPassBeginInfo render_pass_info(this->renderPass, frame, vk::Rect2D().setExtent(this->swapchain->current_extent),
+                                             static_cast<u32>(clearValues.size()), clearValues.data());
+
+    command.begin(&begin_info);
+    command.resetQueryPool(this->metrics->queryPool(), 0, 2);
+    command.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, this->metrics->queryPool(), 0);
+    command.beginRenderPass(render_pass_info, vk::SubpassContents::eSecondaryCommandBuffers);
     {
         // Create inheritance info for the secondary command buffers
-        vk::CommandBufferInheritanceInfo inheritanceInfo(this->renderPass, 0, currentFrame);
+        vk::CommandBufferInheritanceInfo inheritanceInfo(this->renderPass, 0, frame);
 
-        // Get functions
-        std::vector<ao::vulkan::DrawInCommandBuffer> functions = this->updateSecondaryCommandBuffers();
-
-        // Execute drawing functions
-        std::for_each(std::execution::par, functions.begin(), functions.end(),
-                      [index, &inheritanceInfo, &helpers, &cmdMutex, &currentCommand](ao::vulkan::DrawInCommandBuffer& function) {
-                          auto& cmd = function(index, inheritanceInfo, helpers);
-
-                          // Add to primary
-                          cmdMutex.lock();
-                          currentCommand.executeCommands(cmd);
-                          cmdMutex.unlock();
-                      });
+        // Execute secondary command buffers
+        this->executeSecondaryCommandBuffers(inheritanceInfo, this->swapchain->frame_index, command);
     }
-    currentCommand.endRenderPass();
-    currentCommand.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, this->metrics->queryPool(), 1);
-    currentCommand.end();
+    command.endRenderPass();
+    command.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, this->metrics->queryPool(), 1);
+    command.end();
 }

@@ -29,6 +29,6 @@ namespace ao::vulkan {
         /// Method to string
         /// </summary>
         /// <returns>String representation</returns>
-        virtual std::string toString() = 0;
+        virtual std::string str() = 0;
     };
 }  // namespace ao::vulkan

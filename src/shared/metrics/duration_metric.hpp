@@ -75,7 +75,7 @@ namespace ao::vulkan {
             this->_stop = {};
         }
 
-        std::string toString() override {
+        std::string str() override {
             return fmt::format("{:.{}f} {}", std::chrono::duration_cast<Period>(this->_stop - this->_start).count(), Precision, this->unit);
         }
 
@@ -111,7 +111,7 @@ namespace ao::vulkan {
 
         void reset() override {}
 
-        std::string toString() override {
+        std::string str() override {
             std::array<u64, 2> results;
 
             // Get results

@@ -10,7 +10,7 @@
 #define GLM_ENABLE_EXPERIMENTAL
 
 #include <ao/vulkan/engine/settings.h>
-#include <ao/vulkan/engine/wrappers/shadermodule.h>
+#include <ao/vulkan/engine/wrappers/shader_module.h>
 #include <ao/vulkan/engine/wrappers/buffers/array/basic_buffer.hpp>
 #include <ao/vulkan/engine/wrappers/buffers/tuple/staging_buffer.hpp>
 #include <glm/gtx/rotate_vector.hpp>
@@ -37,10 +37,10 @@ class RectangleDemo : public virtual ao::vulkan::GLFWEngine {
     explicit RectangleDemo(std::shared_ptr<ao::vulkan::EngineSettings> settings)
         : ao::vulkan::GLFWEngine(settings),
           ao::vulkan::Engine(settings),
-          vertices({{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-                    {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
-                    {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-                    {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}}),
+          vertices({{{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},
+                    {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}},
+                    {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}},
+                    {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}}}),
           indices({0, 1, 2, 2, 3, 0}){};
     virtual ~RectangleDemo();
 
@@ -49,7 +49,7 @@ class RectangleDemo : public virtual ao::vulkan::GLFWEngine {
     void setUpPipelines() override;
     void setUpVulkanBuffers() override;
     void createSecondaryCommandBuffers() override;
-    std::vector<ao::vulkan::DrawInCommandBuffer> updateSecondaryCommandBuffers() override;
+    void executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex, vk::CommandBuffer& primaryCmd) override;
     void updateUniformBuffers() override;
     vk::QueueFlags queueFlags() const override;
     void createDescriptorSetLayouts() override;
