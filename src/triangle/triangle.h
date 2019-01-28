@@ -38,14 +38,13 @@ class TriangleDemo : public virtual ao::vulkan::GLFWEngine {
           indices({0, 1, 2, 0}){};
     virtual ~TriangleDemo();
 
-    void render() override;
     void setUpRenderPass() override;
     void createPipelineLayouts() override;
     void setUpPipelines() override;
-    void setUpVulkanBuffers() override;
+    void createVulkanBuffers() override;
     void createSecondaryCommandBuffers() override;
-    void executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex, vk::CommandBuffer& primaryCmd) override;
-    void updateUniformBuffers() override;
+    void executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex, vk::CommandBuffer primaryCmd) override;
+    void beforeCommandBuffersUpdate() override;
     vk::QueueFlags queueFlags() const override;
     void createDescriptorSetLayouts() override;
     void createDescriptorPools() override;

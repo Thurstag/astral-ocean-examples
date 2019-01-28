@@ -42,6 +42,8 @@ namespace ao::vulkan {
         std::vector<char const*> instanceExtensions() const override;
         void updateCommandBuffers() override;
 
+        virtual void afterFrame() override;
+
        private:
         std::unique_ptr<MetricModule> metrics;
     };

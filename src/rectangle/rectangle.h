@@ -47,10 +47,10 @@ class RectangleDemo : public virtual ao::vulkan::GLFWEngine {
     void setUpRenderPass() override;
     void createPipelineLayouts() override;
     void setUpPipelines() override;
-    void setUpVulkanBuffers() override;
+    void createVulkanBuffers() override;
     void createSecondaryCommandBuffers() override;
-    void executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex, vk::CommandBuffer& primaryCmd) override;
-    void updateUniformBuffers() override;
+    void executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex, vk::CommandBuffer primaryCmd) override;
+    void beforeCommandBuffersUpdate() override;
     vk::QueueFlags queueFlags() const override;
     void createDescriptorSetLayouts() override;
     void createDescriptorPools() override;

@@ -9,41 +9,6 @@ TriangleDemo::~TriangleDemo() {
     this->indexBuffer.reset();
 }
 
-void TriangleDemo::render() {
-    ao::vulkan::GLFWEngine::render();
-
-    if (!this->clockInit) {
-        this->clock = std::chrono::system_clock::now();
-        this->clockInit = true;
-
-        return;
-    }
-
-    // Define rotate axis
-    glm::vec3 zAxis(0.0f, 0.0f, 1.0f);
-
-    // Delta time
-    float deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(std::chrono::system_clock::now() - this->clock).count();
-    float angles = glm::half_pi<float>();  // Rotation in 1 second
-
-    for (Vertex& vertice : this->vertices) {
-        // To vec4
-        glm::vec4 point(vertice.pos.x, vertice.pos.y, 0, 0);
-
-        // Rotate point
-        point = glm::rotate(angles * deltaTime, zAxis) * point;
-
-        // Update vertice
-        vertice.pos = glm::vec3(point.x, point.y, point.z);
-    }
-
-    // Update vertex buffer
-    this->vertexBuffer->update(this->vertices.data());
-
-    // Update clock
-    this->clock = std::chrono::system_clock::now();
-}
-
 void TriangleDemo::setUpRenderPass() {
     // Define attachments
     std::array<vk::AttachmentDescription, 1> attachments;
@@ -145,7 +110,7 @@ void TriangleDemo::setUpPipelines() {
     vk::VertexInputBindingDescription vertexInputBinding = vk::VertexInputBindingDescription().setStride(sizeof(Vertex));
 
     // Inpute attribute bindings
-    std::array<vk::VertexInputAttributeDescription, 2> vertexInputAttributes = Vertex::attributeDescriptions();
+    std::array<vk::VertexInputAttributeDescription, 2> vertexInputAttributes = Vertex::AttributeDescriptions();
 
     // Vertex input state used for pipeline creation
     vk::PipelineVertexInputStateCreateInfo vertexInputState(vk::PipelineVertexInputStateCreateFlags(), 1, &vertexInputBinding,
@@ -166,7 +131,7 @@ void TriangleDemo::setUpPipelines() {
     this->pipeline->pipelines = this->device->logical.createGraphicsPipelines(this->pipeline->cache, pipelineCreateInfo);
 }
 
-void TriangleDemo::setUpVulkanBuffers() {
+void TriangleDemo::createVulkanBuffers() {
     this->vertexBuffer = std::unique_ptr<ao::vulkan::TupleBuffer<Vertex>>(
         (new ao::vulkan::StagingTupleBuffer<Vertex>(this->device, vk::CommandBufferUsageFlagBits::eSimultaneousUse, true))
             ->init({sizeof(Vertex) * this->vertices.size()}, vk::BufferUsageFlags(vk::BufferUsageFlagBits::eVertexBuffer))
@@ -187,7 +152,7 @@ void TriangleDemo::createSecondaryCommandBuffers() {
     this->swapchain->commands["secondary"] = ao::vulkan::structs::CommandData(buffers, this->swapchain->command_pool);
 }
 
-void TriangleDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex, vk::CommandBuffer& primaryCmd) {
+void TriangleDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex, vk::CommandBuffer primaryCmd) {
     // Create info
     vk::CommandBufferBeginInfo beginInfo =
         vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eRenderPassContinue).setPInheritanceInfo(&inheritanceInfo);
@@ -223,7 +188,38 @@ void TriangleDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceIn
     primaryCmd.executeCommands(commandBuffer);
 }
 
-void TriangleDemo::updateUniformBuffers() {}
+void TriangleDemo::beforeCommandBuffersUpdate() {
+    if (!this->clockInit) {
+        this->clock = std::chrono::system_clock::now();
+        this->clockInit = true;
+
+        return;
+    }
+
+    // Define rotate axis
+    glm::vec3 zAxis(0.0f, 0.0f, 1.0f);
+
+    // Delta time
+    float deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(std::chrono::system_clock::now() - this->clock).count();
+    float angles = glm::half_pi<float>();  // Rotation in 1 second
+
+    for (Vertex& vertice : this->vertices) {
+        // To vec4
+        glm::vec4 point(vertice.pos.x, vertice.pos.y, 0, 0);
+
+        // Rotate point
+        point = glm::rotate(angles * deltaTime, zAxis) * point;
+
+        // Update vertice
+        vertice.pos = glm::vec3(point.x, point.y, point.z);
+    }
+
+    // Update vertex buffer
+    this->vertexBuffer->update(this->vertices.data());
+
+    // Update clock
+    this->clock = std::chrono::system_clock::now();
+}
 
 vk::QueueFlags TriangleDemo::queueFlags() const {
     return ao::vulkan::GLFWEngine::queueFlags() | vk::QueueFlagBits::eTransfer;  // Enable transfer

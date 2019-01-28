@@ -8,8 +8,14 @@
 #include <stb_image.h>
 
 TexturedRectangle::~TexturedRectangle() {
-    this->rectangleBuffer.reset();
-    this->uniformBuffer.reset();
+    this->model_buffer.reset();
+    this->gpu_uniform_buffer.reset();
+
+    this->device->logical.destroySampler(this->texture_sampler);
+
+    this->device->logical.destroyImage(std::get<0>(this->texture));
+    this->device->logical.destroyImageView(std::get<2>(this->texture));
+    this->device->logical.freeMemory(std::get<1>(this->texture));
 }
 
 void TexturedRectangle::setUpRenderPass() {
@@ -56,8 +62,8 @@ void TexturedRectangle::setUpPipelines() {
     ao::vulkan::ShaderModule module(this->device);
 
     // Load shaders & get shaderStages
-    std::vector<vk::PipelineShaderStageCreateInfo> shaderStages = module.loadShader("data/rec-vert.spv", vk::ShaderStageFlagBits::eVertex)
-                                                                      .loadShader("data/rec-frag.spv", vk::ShaderStageFlagBits::eFragment)
+    std::vector<vk::PipelineShaderStageCreateInfo> shaderStages = module.loadShader("data/text-rec-vert.spv", vk::ShaderStageFlagBits::eVertex)
+                                                                      .loadShader("data/text-rec-frag.spv", vk::ShaderStageFlagBits::eFragment)
                                                                       .shaderStages();
 
     vk::GraphicsPipelineCreateInfo pipelineCreateInfo =
@@ -112,10 +118,10 @@ void TexturedRectangle::setUpPipelines() {
     // Specifies the vertex input parameters for a pipeline
 
     // Vertex input binding
-    vk::VertexInputBindingDescription vertexInputBinding = vk::VertexInputBindingDescription().setStride(sizeof(Vertex));
+    auto vertexInputBinding = TexturedVertex::BindingDescription();
 
     // Inpute attribute bindings
-    std::array<vk::VertexInputAttributeDescription, 2> vertexInputAttributes = Vertex::attributeDescriptions();
+    auto vertexInputAttributes = TexturedVertex::AttributeDescriptions();
 
     // Vertex input state used for pipeline creation
     vk::PipelineVertexInputStateCreateInfo vertexInputState(vk::PipelineVertexInputStateCreateFlags(), 1, &vertexInputBinding,
@@ -136,23 +142,25 @@ void TexturedRectangle::setUpPipelines() {
     this->pipeline->pipelines = this->device->logical.createGraphicsPipelines(this->pipeline->cache, pipelineCreateInfo);
 }
 
-void TexturedRectangle::setUpVulkanBuffers() {
+void TexturedRectangle::createVulkanBuffers() {
     // Create vertices & indices
-    this->rectangleBuffer = std::unique_ptr<ao::vulkan::TupleBuffer<Vertex, u16>>(
-        (new ao::vulkan::StagingTupleBuffer<Vertex, u16>(this->device, vk::CommandBufferUsageFlagBits::eOneTimeSubmit))
-            ->init({sizeof(Vertex) * this->vertices.size(), sizeof(u16) * this->indices.size()})
+    this->model_buffer = std::unique_ptr<ao::vulkan::TupleBuffer<TexturedVertex, u16>>(
+        (new ao::vulkan::StagingTupleBuffer<TexturedVertex, u16>(this->device, vk::CommandBufferUsageFlagBits::eOneTimeSubmit))
+            ->init({sizeof(TexturedVertex) * this->vertices.size(), sizeof(u16) * this->indices.size()})
             ->update(this->vertices.data(), this->indices.data()));
 
-    this->uniformBuffer = std::unique_ptr<ao::vulkan::DynamicArrayBuffer<UniformBufferObject>>(
+    this->gpu_uniform_buffer = std::unique_ptr<ao::vulkan::DynamicArrayBuffer<UniformBufferObject>>(
         (new ao::vulkan::BasicDynamicArrayBuffer<UniformBufferObject>(this->swapchain->buffers.size(), this->device))
             ->init(vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, vk::MemoryPropertyFlagBits::eHostVisible,
                    ao::vulkan::Buffer::CalculateUBOAligmentSize(this->device->physical, sizeof(UniformBufferObject))));
 
     // Map buffer
-    this->uniformBuffer->map();
+    this->gpu_uniform_buffer->map();
 
     // Resize uniform buffers vector
-    this->_uniformBuffers.resize(this->swapchain->buffers.size());
+    this->uniform_buffers.resize(this->swapchain->buffers.size());
+
+    /* TEXTURE CREATION */
 
     // Load texture
     char* textureFile = "data/face.jpg";
@@ -165,26 +173,42 @@ void TexturedRectangle::setUpVulkanBuffers() {
     }
 
     // Create buffer
-    this->textureBuffer = std::unique_ptr<ao::vulkan::StagingTupleBuffer<pixel_t>>(
-        (new ao::vulkan::StagingTupleBuffer<pixel_t>(this->device, vk::CommandBufferUsageFlagBits::eOneTimeSubmit, true))
-            ->init({texWidth * texHeight * sizeof(pixel_t)}));
-    this->textureBuffer->update(pixels);
+    auto textureBuffer = ao::vulkan::BasicTupleBuffer<pixel_t>(this->device);
+    textureBuffer
+        .init(vk::BufferUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive,
+              vk::MemoryPropertyFlagBits::eHostCoherent | vk::MemoryPropertyFlagBits::eHostVisible, {texWidth * texHeight * 4 * sizeof(pixel_t)})
+        ->update(pixels);
+
+    auto a = texWidth * texHeight * 4;
 
     // Free image
     stbi_image_free(pixels);
 
-    /* TODO: REFACTOR */
-
-    vk::Image image;
-    vk::DeviceMemory imageMemory;
-
-    vk::ImageCreateInfo createInfo(vk::ImageCreateFlags(), vk::ImageType::e2D, vk::Format::eR8G8B8A8Unorm,
-                                   vk::Extent3D(static_cast<u32>(texWidth), static_cast<u32>(texHeight), 1), 1, 1, vk::SampleCountFlagBits::e1,
-                                   vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
-                                   vk::SharingMode::eExclusive);
-
     // Create image
-    image = this->device->logical.createImage(createInfo);
+    auto image =
+        this->device->createImage(texWidth, texHeight, vk::Format::eR8G8B8A8Unorm, vk::ImageType::e2D, vk::ImageTiling::eOptimal,
+                                  vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+    // Assign
+    std::get<0>(this->texture) = image.first;
+    std::get<1>(this->texture) = image.second;
+
+    // Process image & copy into image
+    this->device->processImage(std::get<0>(this->texture), vk::Format::eR8G8B8A8Unorm, vk::ImageLayout::eUndefined,
+                               vk::ImageLayout::eTransferDstOptimal);
+    this->device->copyBufferToImage(textureBuffer.buffer(), std::get<0>(this->texture), texWidth, texHeight);
+    this->device->processImage(std::get<0>(this->texture), vk::Format::eR8G8B8A8Unorm, vk::ImageLayout::eTransferDstOptimal,
+                               vk::ImageLayout::eShaderReadOnlyOptimal);
+
+    // Create view
+    std::get<2>(this->texture) = this->device->createImageView(std::get<0>(this->texture), vk::Format::eR8G8B8A8Unorm, vk::ImageViewType::e2D,
+                                                               vk::ImageAspectFlagBits::eColor);
+
+    // Create sampler
+    this->texture_sampler = this->device->logical.createSampler(
+        vk::SamplerCreateInfo(vk::SamplerCreateFlags(), vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eLinear,
+                              vk::SamplerAddressMode::eRepeat, vk::SamplerAddressMode::eRepeat, vk::SamplerAddressMode::eRepeat, 0, VK_TRUE, 16,
+                              VK_FALSE, vk::CompareOp::eAlways, 0, 0, vk::BorderColor::eFloatOpaqueBlack, VK_FALSE));
 }
 
 void TexturedRectangle::createSecondaryCommandBuffers() {
@@ -196,11 +220,11 @@ void TexturedRectangle::createSecondaryCommandBuffers() {
 }
 
 void TexturedRectangle::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex,
-                                                       vk::CommandBuffer& primaryCmd) {
+                                                       vk::CommandBuffer primaryCmd) {
     // Create info
     vk::CommandBufferBeginInfo beginInfo =
         vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eRenderPassContinue).setPInheritanceInfo(&inheritanceInfo);
-    ao::vulkan::TupleBuffer<Vertex, u16>* rectangle = this->rectangleBuffer.get();
+    ao::vulkan::TupleBuffer<TexturedVertex, u16>* rectangle = this->model_buffer.get();
 
     // Draw in command
     auto& commandBuffer = this->swapchain->commands["secondary"].buffers[0];
@@ -227,7 +251,7 @@ void TexturedRectangle::executeSecondaryCommandBuffers(vk::CommandBufferInherita
     primaryCmd.executeCommands(commandBuffer);
 }
 
-void TexturedRectangle::updateUniformBuffers() {
+void TexturedRectangle::beforeCommandBuffersUpdate() {
     if (!this->clockInit) {
         this->clock = std::chrono::system_clock::now();
         this->clockInit = true;
@@ -239,16 +263,16 @@ void TexturedRectangle::updateUniformBuffers() {
     float deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(std::chrono::system_clock::now() - this->clock).count();
 
     // Update uniform buffer
-    this->_uniformBuffers[this->swapchain->frame_index].model =
+    this->uniform_buffers[this->swapchain->frame_index].model =
         glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    this->_uniformBuffers[this->swapchain->frame_index].view =
+    this->uniform_buffers[this->swapchain->frame_index].view =
         glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    this->_uniformBuffers[this->swapchain->frame_index].proj =
+    this->uniform_buffers[this->swapchain->frame_index].proj =
         glm::perspective(glm::radians(45.0f), this->swapchain->current_extent.width / (float)this->swapchain->current_extent.height, 0.1f, 10.0f);
-    this->_uniformBuffers[this->swapchain->frame_index].proj[1][1] *= -1;  // Adapt for vulkan
+    this->uniform_buffers[this->swapchain->frame_index].proj[1][1] *= -1;  // Adapt for vulkan
 
     // Update buffer
-    this->uniformBuffer->updateFragment(this->swapchain->frame_index, &this->_uniformBuffers[this->swapchain->frame_index]);
+    this->gpu_uniform_buffer->updateFragment(this->swapchain->frame_index, &this->uniform_buffers[this->swapchain->frame_index]);
 }
 
 vk::QueueFlags TexturedRectangle::queueFlags() const {
@@ -256,11 +280,13 @@ vk::QueueFlags TexturedRectangle::queueFlags() const {
 }
 
 void TexturedRectangle::createDescriptorSetLayouts() {
-    // Create binding
-    vk::DescriptorSetLayoutBinding binding(0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex);
+    // Create bindings
+    std::array<vk::DescriptorSetLayoutBinding, 2> bindings;
+    bindings[0] = vk::DescriptorSetLayoutBinding(0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex);
+    bindings[1] = vk::DescriptorSetLayoutBinding(1, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment);
 
     // Create info
-    vk::DescriptorSetLayoutCreateInfo createInfo(vk::DescriptorSetLayoutCreateFlags(), 1, &binding);
+    vk::DescriptorSetLayoutCreateInfo createInfo(vk::DescriptorSetLayoutCreateFlags(), static_cast<u32>(bindings.size()), bindings.data());
 
     // Create layouts
     for (size_t i = 0; i < this->swapchain->buffers.size(); i++) {
@@ -269,11 +295,13 @@ void TexturedRectangle::createDescriptorSetLayouts() {
 }
 
 void TexturedRectangle::createDescriptorPools() {
-    vk::DescriptorPoolSize poolSize(vk::DescriptorType::eUniformBuffer, static_cast<u32>(this->swapchain->buffers.size()));
+    std::array<vk::DescriptorPoolSize, 2> poolSizes;
+    poolSizes[0] = vk::DescriptorPoolSize(vk::DescriptorType::eUniformBuffer, static_cast<u32>(this->swapchain->buffers.size()));
+    poolSizes[0] = vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler, static_cast<u32>(this->swapchain->buffers.size()));
 
     // Create pool
-    this->descriptorPools.push_back(this->device->logical.createDescriptorPool(
-        vk::DescriptorPoolCreateInfo(vk::DescriptorPoolCreateFlags(), static_cast<u32>(this->swapchain->buffers.size()), 1, &poolSize)));
+    this->descriptorPools.push_back(this->device->logical.createDescriptorPool(vk::DescriptorPoolCreateInfo(
+        vk::DescriptorPoolCreateFlags(), static_cast<u32>(this->swapchain->buffers.size()), static_cast<u32>(poolSizes.size()), poolSizes.data())));
 }
 
 void TexturedRectangle::createDescriptorSets() {
@@ -285,8 +313,12 @@ void TexturedRectangle::createDescriptorSets() {
 
     // Configure
     for (size_t i = 0; i < this->swapchain->buffers.size(); i++) {
-        vk::DescriptorBufferInfo bufferInfo(this->uniformBuffer->buffer(), this->uniformBuffer->offset(i), sizeof(UniformBufferObject));
+        vk::DescriptorBufferInfo bufferInfo(this->gpu_uniform_buffer->buffer(), this->gpu_uniform_buffer->offset(i), sizeof(UniformBufferObject));
         this->device->logical.updateDescriptorSets(
             vk::WriteDescriptorSet(this->descriptorSets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &bufferInfo), {});
+
+        vk::DescriptorImageInfo sampleInfo(this->texture_sampler, std::get<2>(this->texture), vk::ImageLayout::eShaderReadOnlyOptimal);
+        this->device->logical.updateDescriptorSets(
+            vk::WriteDescriptorSet(this->descriptorSets[i], 1, 0, 1, vk::DescriptorType::eCombinedImageSampler, &sampleInfo), {});
     }
 }

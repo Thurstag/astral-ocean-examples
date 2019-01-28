@@ -26,7 +26,7 @@ int main(int argc, char* argv[]) {
 
     // Define settings
     std::shared_ptr<ao::vulkan::EngineSettings> settings = std::make_shared<ao::vulkan::EngineSettings>();
-    settings->get<std::string>(ao::vulkan::settings::WindowTitle) = std::string("Tex-Rectangle");
+    settings->get<std::string>(ao::vulkan::settings::WindowTitle) = std::string("Text Rectangle");
     settings->get<u64>(ao::vulkan::settings::WindowWidth) = 1280;
     settings->get<u64>(ao::vulkan::settings::WindowHeight) = 720;
     settings->get<bool>(ao::vulkan::settings::ValidationLayers) = true;

@@ -124,7 +124,7 @@ void DepthRectangleDemo::setUpPipelines() {
     vk::VertexInputBindingDescription vertexInputBinding = vk::VertexInputBindingDescription().setStride(sizeof(Vertex));
 
     // Inpute attribute bindings
-    std::array<vk::VertexInputAttributeDescription, 2> vertexInputAttributes = Vertex::attributeDescriptions();
+    std::array<vk::VertexInputAttributeDescription, 2> vertexInputAttributes = Vertex::AttributeDescriptions();
 
     // Vertex input state used for pipeline creation
     vk::PipelineVertexInputStateCreateInfo vertexInputState(vk::PipelineVertexInputStateCreateFlags(), 1, &vertexInputBinding,
@@ -145,7 +145,7 @@ void DepthRectangleDemo::setUpPipelines() {
     this->pipeline->pipelines = this->device->logical.createGraphicsPipelines(this->pipeline->cache, pipelineCreateInfo);
 }
 
-void DepthRectangleDemo::setUpVulkanBuffers() {
+void DepthRectangleDemo::createVulkanBuffers() {
     // Create vertices & indices
     this->rectangleBuffer = std::unique_ptr<ao::vulkan::TupleBuffer<Vertex, u16>>(
         (new ao::vulkan::StagingTupleBuffer<Vertex, u16>(this->device, vk::CommandBufferUsageFlagBits::eOneTimeSubmit))
@@ -174,7 +174,7 @@ void DepthRectangleDemo::createSecondaryCommandBuffers() {
 }
 
 void DepthRectangleDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex,
-                                                        vk::CommandBuffer& primaryCmd) {
+                                                        vk::CommandBuffer primaryCmd) {
     // Create info
     vk::CommandBufferBeginInfo beginInfo =
         vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eRenderPassContinue).setPInheritanceInfo(&inheritanceInfo);
@@ -205,7 +205,7 @@ void DepthRectangleDemo::executeSecondaryCommandBuffers(vk::CommandBufferInherit
     primaryCmd.executeCommands(commandBuffer);
 }
 
-void DepthRectangleDemo::updateUniformBuffers() {
+void DepthRectangleDemo::beforeCommandBuffersUpdate() {
     if (!this->clockInit) {
         this->clock = std::chrono::system_clock::now();
         this->clockInit = true;

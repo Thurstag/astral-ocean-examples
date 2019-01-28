@@ -133,3 +133,5 @@ void ao::vulkan::GLFWEngine::updateCommandBuffers() {
     command.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, this->metrics->queryPool(), 1);
     command.end();
 }
+
+void ao::vulkan::GLFWEngine::afterFrame() {}

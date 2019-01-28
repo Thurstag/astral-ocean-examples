@@ -112,7 +112,7 @@ void RectangleDemo::setUpPipelines() {
     vk::VertexInputBindingDescription vertexInputBinding = vk::VertexInputBindingDescription().setStride(sizeof(Vertex));
 
     // Inpute attribute bindings
-    std::array<vk::VertexInputAttributeDescription, 2> vertexInputAttributes = Vertex::attributeDescriptions();
+    std::array<vk::VertexInputAttributeDescription, 2> vertexInputAttributes = Vertex::AttributeDescriptions();
 
     // Vertex input state used for pipeline creation
     vk::PipelineVertexInputStateCreateInfo vertexInputState(vk::PipelineVertexInputStateCreateFlags(), 1, &vertexInputBinding,
@@ -133,7 +133,7 @@ void RectangleDemo::setUpPipelines() {
     this->pipeline->pipelines = this->device->logical.createGraphicsPipelines(this->pipeline->cache, pipelineCreateInfo);
 }
 
-void RectangleDemo::setUpVulkanBuffers() {
+void RectangleDemo::createVulkanBuffers() {
     // Create vertices & indices
     this->rectangleBuffer = std::unique_ptr<ao::vulkan::TupleBuffer<Vertex, u16>>(
         (new ao::vulkan::StagingTupleBuffer<Vertex, u16>(this->device, vk::CommandBufferUsageFlagBits::eOneTimeSubmit))
@@ -161,7 +161,7 @@ void RectangleDemo::createSecondaryCommandBuffers() {
     this->swapchain->commands["secondary"] = ao::vulkan::structs::CommandData(buffers, this->swapchain->command_pool);
 }
 
-void RectangleDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex, vk::CommandBuffer& primaryCmd) {
+void RectangleDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex, vk::CommandBuffer primaryCmd) {
     // Create info
     vk::CommandBufferBeginInfo beginInfo =
         vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eRenderPassContinue).setPInheritanceInfo(&inheritanceInfo);
@@ -192,7 +192,7 @@ void RectangleDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceI
     primaryCmd.executeCommands(commandBuffer);
 }
 
-void RectangleDemo::updateUniformBuffers() {
+void RectangleDemo::beforeCommandBuffersUpdate() {
     if (!this->clockInit) {
         this->clock = std::chrono::system_clock::now();
         this->clockInit = true;
