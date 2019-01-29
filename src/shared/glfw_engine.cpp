@@ -9,11 +9,15 @@
 #include "metrics/counter_metric.hpp"
 #include "metrics/duration_metric.hpp"
 
+ao::vulkan::GLFWEngine::GLFWEngine(std::shared_ptr<EngineSettings> settings) : Engine(settings), window(nullptr) {}
+
 /// <summary>
 /// Destructor
 /// </summary>
 ao::vulkan::GLFWEngine::~GLFWEngine() {
     this->freeWindow();
+
+    this->secondary_command_pool.reset();
 }
 
 void ao::vulkan::GLFWEngine::initWindow() {
@@ -34,11 +38,11 @@ void ao::vulkan::GLFWEngine::initWindow() {
                                     this->settings_->get<std::string>(ao::vulkan::settings::WindowTitle).c_str(), nullptr, nullptr);
 }
 
-void ao::vulkan::GLFWEngine::initSurface(vk::SurfaceKHR& surface) {
+vk::SurfaceKHR ao::vulkan::GLFWEngine::initSurface() {
     VkSurfaceKHR _s;
     ao::vulkan::utilities::vkAssert(glfwCreateWindowSurface(*this->instance, this->window, nullptr, &_s), "Fail to create surface");
 
-    surface = _s;
+    return vk::SurfaceKHR(_s);
 }
 
 void ao::vulkan::GLFWEngine::freeWindow() {
@@ -59,6 +63,11 @@ void ao::vulkan::GLFWEngine::freeVulkan() {
 
 void ao::vulkan::GLFWEngine::initVulkan() {
     ao::vulkan::Engine::initVulkan();
+
+    // Create command pool
+    this->secondary_command_pool = std::make_unique<ao::vulkan::CommandPool>(
+        this->device->logical, vk::CommandPoolCreateFlagBits::eResetCommandBuffer, this->device->queues[vk::QueueFlagBits::eGraphics].index,
+        ao::vulkan::CommandPoolAccessModeFlagBits::eConcurrent);
 
     // Init metric module (TODO: DrawCall per second)
     this->metrics = std::make_unique<ao::vulkan::MetricModule>(this->device);
@@ -105,8 +114,8 @@ std::vector<char const*> ao::vulkan::GLFWEngine::instanceExtensions() const {
 
 void ao::vulkan::GLFWEngine::updateCommandBuffers() {
     // Get current command buffer/frame
-    vk::CommandBuffer& command = this->swapchain->commands["primary"].buffers[this->swapchain->frame_index];
-    vk::Framebuffer& frame = this->swapchain->currentFrame();
+    vk::CommandBuffer command = this->swapchain->currentCommand();
+    vk::Framebuffer frame = this->swapchain->currentFrame();
 
     // Create info
     vk::CommandBufferBeginInfo begin_info(vk::CommandBufferUsageFlagBits::eRenderPassContinue);

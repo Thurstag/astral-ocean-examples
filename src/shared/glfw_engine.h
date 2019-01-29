@@ -22,14 +22,16 @@ namespace ao::vulkan {
 
     class GLFWEngine : public virtual Engine {
        public:
-        explicit GLFWEngine(std::shared_ptr<EngineSettings> settings) : Engine(settings), window(nullptr){};
+        explicit GLFWEngine(std::shared_ptr<EngineSettings> settings);
         virtual ~GLFWEngine();
 
        protected:
+        std::unique_ptr<CommandPool> secondary_command_pool;
+        std::vector<vk::CommandBuffer> command_buffers;
         GLFWwindow* window;
 
         void initWindow() override;
-        void initSurface(vk::SurfaceKHR& surface) override;
+        vk::SurfaceKHR initSurface() override;
         void freeWindow() override;
         bool isIconified() const override;
 

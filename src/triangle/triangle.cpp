@@ -145,12 +145,7 @@ void TriangleDemo::createVulkanBuffers() {
 }
 
 void TriangleDemo::createSecondaryCommandBuffers() {
-    // Allocate buffers
-    std::vector<vk::CommandBuffer> buffers = this->device->logical.allocateCommandBuffers(
-        vk::CommandBufferAllocateInfo(this->swapchain->command_pool, vk::CommandBufferLevel::eSecondary, 1));
-
-    // Add to container
-    this->swapchain->commands["secondary"] = ao::vulkan::structs::CommandData(buffers, this->swapchain->command_pool);
+    this->command_buffers = this->secondary_command_pool->allocateCommandBuffers(vk::CommandBufferLevel::eSecondary, this->swapchain->buffers.size());
 }
 
 void TriangleDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex, vk::CommandBuffer primaryCmd) {
@@ -159,7 +154,7 @@ void TriangleDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceIn
         vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eRenderPassContinue).setPInheritanceInfo(&inheritanceInfo);
 
     // Draw in command
-    auto& commandBuffer = this->swapchain->commands["secondary"].buffers[0];
+    auto& commandBuffer = this->command_buffers[frameIndex];
     commandBuffer.begin(beginInfo);
     {
         // Set viewport & scissor

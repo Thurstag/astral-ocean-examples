@@ -154,12 +154,7 @@ void RectangleDemo::createVulkanBuffers() {
 }
 
 void RectangleDemo::createSecondaryCommandBuffers() {
-    // Allocate buffers
-    std::vector<vk::CommandBuffer> buffers = this->device->logical.allocateCommandBuffers(
-        vk::CommandBufferAllocateInfo(this->swapchain->command_pool, vk::CommandBufferLevel::eSecondary, 1));
-
-    // Add to container
-    this->swapchain->commands["secondary"] = ao::vulkan::structs::CommandData(buffers, this->swapchain->command_pool);
+    this->command_buffers = this->secondary_command_pool->allocateCommandBuffers(vk::CommandBufferLevel::eSecondary, this->swapchain->buffers.size());
 }
 
 void RectangleDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex, vk::CommandBuffer primaryCmd) {
@@ -169,7 +164,7 @@ void RectangleDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceI
     ao::vulkan::TupleBuffer<Vertex, u16>* rectangle = this->model_buffer.get();
 
     // Draw in command
-    auto& commandBuffer = this->swapchain->commands["secondary"].buffers[0];
+    auto& commandBuffer = this->command_buffers[frameIndex];
     commandBuffer.begin(beginInfo);
     {
         // Set viewport & scissor

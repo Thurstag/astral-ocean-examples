@@ -12,8 +12,6 @@ static_assert(RECTANGLE_COUNT <= 10);  // if RECTANGLE_COUNT exceeds 10 it will 
 RectanglesDemo::~RectanglesDemo() {
     this->object_buffer.reset();
     this->ubo_buffer.reset();
-
-    // TODO: Found a solution to free command pools
 }
 
 void RectanglesDemo::setUpRenderPass() {
@@ -178,19 +176,8 @@ void RectanglesDemo::createVulkanBuffers() {
 }
 
 void RectanglesDemo::createSecondaryCommandBuffers() {
-    // Create pools
-    for (size_t i = 0; i < RECTANGLE_COUNT; i++) {
-        this->command_pools.push_back(this->device->logical.createCommandPool(
-            vk::CommandPoolCreateInfo(vk::CommandPoolCreateFlagBits::eResetCommandBuffer, this->device->queues[vk::QueueFlagBits::eGraphics].index)));
-    }
-
-    // Add to container
-    for (size_t i = 0; i < RECTANGLE_COUNT; i++) {
-        std::vector<vk::CommandBuffer> buffers = this->device->logical.allocateCommandBuffers(
-            vk::CommandBufferAllocateInfo(this->command_pools[i], vk::CommandBufferLevel::eSecondary, 1));
-
-        this->swapchain->commands[fmt::format("secondary-{}", i)] = ao::vulkan::structs::CommandData(buffers, this->command_pools[i]);
-    }
+    this->command_buffers =
+        this->secondary_command_pool->allocateCommandBuffers(vk::CommandBufferLevel::eSecondary, RECTANGLE_COUNT * this->swapchain->buffers.size());
 }
 
 void RectanglesDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex, vk::CommandBuffer primaryCmd) {
@@ -204,7 +191,7 @@ void RectanglesDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritance
     // Draw in commands
     auto range = boost::irange(0, RECTANGLE_COUNT);
     std::for_each(std::execution::par, range.begin(), range.end(), [&](auto i) {
-        auto commandBuffer = this->swapchain->commands[fmt::format("secondary-{}", i)].buffers.front();
+        auto commandBuffer = this->command_buffers[(i * this->swapchain->buffers.size()) + frameIndex];
 
         commandBuffer.begin(beginInfo);
         {
