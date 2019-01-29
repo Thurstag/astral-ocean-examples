@@ -31,7 +31,7 @@ namespace ao::vulkan {
         GLFWwindow* window;
 
         void initWindow() override;
-        vk::SurfaceKHR initSurface() override;
+        vk::SurfaceKHR createSurface() override;
         void freeWindow() override;
         bool isIconified() const override;
 

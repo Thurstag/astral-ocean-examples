@@ -22,7 +22,7 @@ void TexturedRectangle::setUpRenderPass() {
     // Define attachments
     std::array<vk::AttachmentDescription, 1> attachments;
     attachments[0]
-        .setFormat(this->swapchain->color_format)
+        .setFormat(this->swapchain->colorFormat())
         .setSamples(vk::SampleCountFlagBits::e1)
         .setLoadOp(vk::AttachmentLoadOp::eClear)
         .setStoreOp(vk::AttachmentStoreOp::eStore)
@@ -96,9 +96,8 @@ void TexturedRectangle::setUpPipelines() {
                                                                 .setPAttachments(blendAttachmentState.data());
 
     // Viewport state
-    vk::Viewport viewport(0, 0, static_cast<float>(this->swapchain->current_extent.width), static_cast<float>(this->swapchain->current_extent.height),
-                          0, 1);
-    vk::Rect2D scissor(vk::Offset2D(), this->swapchain->current_extent);
+    vk::Viewport viewport(0, 0, static_cast<float>(this->swapchain->extent().width), static_cast<float>(this->swapchain->extent().height), 0, 1);
+    vk::Rect2D scissor(vk::Offset2D(), this->swapchain->extent());
     vk::PipelineViewportStateCreateInfo viewportState(vk::PipelineViewportStateCreateFlags(), 1, &viewport, 1, &scissor);
 
     // Enable dynamic states
@@ -151,7 +150,7 @@ void TexturedRectangle::createVulkanBuffers() {
             ->update(this->vertices.data(), this->indices.data()));
 
     this->ubo_buffer = std::unique_ptr<ao::vulkan::DynamicArrayBuffer<UniformBufferObject>>(
-        (new ao::vulkan::BasicDynamicArrayBuffer<UniformBufferObject>(this->swapchain->buffers.size(), this->device))
+        (new ao::vulkan::BasicDynamicArrayBuffer<UniformBufferObject>(this->swapchain->size(), this->device))
             ->init(vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, vk::MemoryPropertyFlagBits::eHostVisible,
                    ao::vulkan::Buffer::CalculateUBOAligmentSize(this->device->physical, sizeof(UniformBufferObject))));
 
@@ -159,7 +158,7 @@ void TexturedRectangle::createVulkanBuffers() {
     this->ubo_buffer->map();
 
     // Resize uniform buffers vector
-    this->uniform_buffers.resize(this->swapchain->buffers.size());
+    this->uniform_buffers.resize(this->swapchain->size());
 
     /* TEXTURE CREATION */
 
@@ -213,7 +212,7 @@ void TexturedRectangle::createVulkanBuffers() {
 }
 
 void TexturedRectangle::createSecondaryCommandBuffers() {
-    this->command_buffers = this->secondary_command_pool->allocateCommandBuffers(vk::CommandBufferLevel::eSecondary, this->swapchain->buffers.size());
+    this->command_buffers = this->secondary_command_pool->allocateCommandBuffers(vk::CommandBufferLevel::eSecondary, this->swapchain->size());
 }
 
 void TexturedRectangle::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex,
@@ -228,9 +227,9 @@ void TexturedRectangle::executeSecondaryCommandBuffers(vk::CommandBufferInherita
     commandBuffer.begin(beginInfo);
     {
         // Set viewport & scissor
-        commandBuffer.setViewport(0, vk::Viewport(0, 0, static_cast<float>(this->swapchain->current_extent.width),
-                                                  static_cast<float>(this->swapchain->current_extent.height), 0, 1));
-        commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(), this->swapchain->current_extent));
+        commandBuffer.setViewport(
+            0, vk::Viewport(0, 0, static_cast<float>(this->swapchain->extent().width), static_cast<float>(this->swapchain->extent().height), 0, 1));
+        commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(), this->swapchain->extent()));
 
         // Bind pipeline
         commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, this->pipeline->pipelines[0]);
@@ -260,16 +259,16 @@ void TexturedRectangle::beforeCommandBuffersUpdate() {
     float deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(std::chrono::system_clock::now() - this->clock).count();
 
     // Update uniform buffer
-    this->uniform_buffers[this->swapchain->frame_index].model =
+    this->uniform_buffers[this->swapchain->currentFrameIndex()].model =
         glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    this->uniform_buffers[this->swapchain->frame_index].view =
+    this->uniform_buffers[this->swapchain->currentFrameIndex()].view =
         glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    this->uniform_buffers[this->swapchain->frame_index].proj =
-        glm::perspective(glm::radians(45.0f), this->swapchain->current_extent.width / (float)this->swapchain->current_extent.height, 0.1f, 10.0f);
-    this->uniform_buffers[this->swapchain->frame_index].proj[1][1] *= -1;  // Adapt for vulkan
+    this->uniform_buffers[this->swapchain->currentFrameIndex()].proj =
+        glm::perspective(glm::radians(45.0f), this->swapchain->extent().width / (float)this->swapchain->extent().height, 0.1f, 10.0f);
+    this->uniform_buffers[this->swapchain->currentFrameIndex()].proj[1][1] *= -1;  // Adapt for vulkan
 
     // Update buffer
-    this->ubo_buffer->updateFragment(this->swapchain->frame_index, &this->uniform_buffers[this->swapchain->frame_index]);
+    this->ubo_buffer->updateFragment(this->swapchain->currentFrameIndex(), &this->uniform_buffers[this->swapchain->currentFrameIndex()]);
 }
 
 vk::QueueFlags TexturedRectangle::queueFlags() const {
@@ -286,30 +285,30 @@ void TexturedRectangle::createDescriptorSetLayouts() {
     vk::DescriptorSetLayoutCreateInfo createInfo(vk::DescriptorSetLayoutCreateFlags(), static_cast<u32>(bindings.size()), bindings.data());
 
     // Create layouts
-    for (size_t i = 0; i < this->swapchain->buffers.size(); i++) {
+    for (size_t i = 0; i < this->swapchain->size(); i++) {
         this->descriptorSetLayouts.push_back(this->device->logical.createDescriptorSetLayout(createInfo));
     }
 }
 
 void TexturedRectangle::createDescriptorPools() {
     std::array<vk::DescriptorPoolSize, 2> poolSizes;
-    poolSizes[0] = vk::DescriptorPoolSize(vk::DescriptorType::eUniformBuffer, static_cast<u32>(this->swapchain->buffers.size()));
-    poolSizes[0] = vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler, static_cast<u32>(this->swapchain->buffers.size()));
+    poolSizes[0] = vk::DescriptorPoolSize(vk::DescriptorType::eUniformBuffer, static_cast<u32>(this->swapchain->size()));
+    poolSizes[0] = vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler, static_cast<u32>(this->swapchain->size()));
 
     // Create pool
     this->descriptorPools.push_back(this->device->logical.createDescriptorPool(vk::DescriptorPoolCreateInfo(
-        vk::DescriptorPoolCreateFlags(), static_cast<u32>(this->swapchain->buffers.size()), static_cast<u32>(poolSizes.size()), poolSizes.data())));
+        vk::DescriptorPoolCreateFlags(), static_cast<u32>(this->swapchain->size()), static_cast<u32>(poolSizes.size()), poolSizes.data())));
 }
 
 void TexturedRectangle::createDescriptorSets() {
-    vk::DescriptorSetAllocateInfo allocateInfo(this->descriptorPools[0], static_cast<u32>(this->swapchain->buffers.size()),
+    vk::DescriptorSetAllocateInfo allocateInfo(this->descriptorPools[0], static_cast<u32>(this->swapchain->size()),
                                                this->descriptorSetLayouts.data());
 
     // Create sets
     this->descriptorSets = this->device->logical.allocateDescriptorSets(allocateInfo);
 
     // Configure
-    for (size_t i = 0; i < this->swapchain->buffers.size(); i++) {
+    for (size_t i = 0; i < this->swapchain->size(); i++) {
         vk::DescriptorBufferInfo bufferInfo(this->ubo_buffer->buffer(), this->ubo_buffer->offset(i), sizeof(UniformBufferObject));
         this->device->logical.updateDescriptorSets(
             vk::WriteDescriptorSet(this->descriptorSets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &bufferInfo), {});

@@ -38,7 +38,7 @@ void ao::vulkan::GLFWEngine::initWindow() {
                                     this->settings_->get<std::string>(ao::vulkan::settings::WindowTitle).c_str(), nullptr, nullptr);
 }
 
-vk::SurfaceKHR ao::vulkan::GLFWEngine::initSurface() {
+vk::SurfaceKHR ao::vulkan::GLFWEngine::createSurface() {
     VkSurfaceKHR _s;
     ao::vulkan::utilities::vkAssert(glfwCreateWindowSurface(*this->instance, this->window, nullptr, &_s), "Fail to create surface");
 
@@ -124,7 +124,7 @@ void ao::vulkan::GLFWEngine::updateCommandBuffers() {
     clearValues[0].setColor(vk::ClearColorValue());
     clearValues[1].setDepthStencil(vk::ClearDepthStencilValue(1));
 
-    vk::RenderPassBeginInfo render_pass_info(this->renderPass, frame, vk::Rect2D().setExtent(this->swapchain->current_extent),
+    vk::RenderPassBeginInfo render_pass_info(this->renderPass, frame, vk::Rect2D().setExtent(this->swapchain->extent()),
                                              static_cast<u32>(clearValues.size()), clearValues.data());
 
     command.begin(&begin_info);
@@ -136,7 +136,7 @@ void ao::vulkan::GLFWEngine::updateCommandBuffers() {
         vk::CommandBufferInheritanceInfo inheritanceInfo(this->renderPass, 0, frame);
 
         // Execute secondary command buffers
-        this->executeSecondaryCommandBuffers(inheritanceInfo, this->swapchain->frame_index, command);
+        this->executeSecondaryCommandBuffers(inheritanceInfo, this->swapchain->currentFrameIndex(), command);
     }
     command.endRenderPass();
     command.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, this->metrics->queryPool(), 1);

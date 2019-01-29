@@ -13,7 +13,7 @@ void TriangleDemo::setUpRenderPass() {
     // Define attachments
     std::array<vk::AttachmentDescription, 1> attachments;
     attachments[0]
-        .setFormat(this->swapchain->color_format)
+        .setFormat(this->swapchain->colorFormat())
         .setSamples(vk::SampleCountFlagBits::e1)
         .setLoadOp(vk::AttachmentLoadOp::eClear)
         .setStoreOp(vk::AttachmentStoreOp::eStore)
@@ -85,9 +85,8 @@ void TriangleDemo::setUpPipelines() {
                                                                 .setPAttachments(blendAttachmentState.data());
 
     // Viewport state
-    vk::Viewport viewport(0, 0, static_cast<float>(this->swapchain->current_extent.width), static_cast<float>(this->swapchain->current_extent.height),
-                          0, 1);
-    vk::Rect2D scissor(vk::Offset2D(), this->swapchain->current_extent);
+    vk::Viewport viewport(0, 0, static_cast<float>(this->swapchain->extent().width), static_cast<float>(this->swapchain->extent().height), 0, 1);
+    vk::Rect2D scissor(vk::Offset2D(), this->swapchain->extent());
     vk::PipelineViewportStateCreateInfo viewportState(vk::PipelineViewportStateCreateFlags(), 1, &viewport, 1, &scissor);
 
     // Enable dynamic states
@@ -145,7 +144,7 @@ void TriangleDemo::createVulkanBuffers() {
 }
 
 void TriangleDemo::createSecondaryCommandBuffers() {
-    this->command_buffers = this->secondary_command_pool->allocateCommandBuffers(vk::CommandBufferLevel::eSecondary, this->swapchain->buffers.size());
+    this->command_buffers = this->secondary_command_pool->allocateCommandBuffers(vk::CommandBufferLevel::eSecondary, this->swapchain->size());
 }
 
 void TriangleDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex, vk::CommandBuffer primaryCmd) {
@@ -158,9 +157,9 @@ void TriangleDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceIn
     commandBuffer.begin(beginInfo);
     {
         // Set viewport & scissor
-        commandBuffer.setViewport(0, vk::Viewport(0, 0, static_cast<float>(this->swapchain->current_extent.width),
-                                                  static_cast<float>(this->swapchain->current_extent.height), 0, 1));
-        commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(), this->swapchain->current_extent));
+        commandBuffer.setViewport(
+            0, vk::Viewport(0, 0, static_cast<float>(this->swapchain->extent().width), static_cast<float>(this->swapchain->extent().height), 0, 1));
+        commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(), this->swapchain->extent()));
 
         // Bind pipeline
         commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, this->pipeline->pipelines[0]);
