@@ -51,9 +51,10 @@ void TriangleDemo::setUpPipelines() {
     ao::vulkan::ShaderModule module(this->device);
 
     // Load shaders & get shaderStages
-    std::vector<vk::PipelineShaderStageCreateInfo> shaderStages = module.loadShader("data/tri-vert.spv", vk::ShaderStageFlagBits::eVertex)
-                                                                      .loadShader("data/tri-frag.spv", vk::ShaderStageFlagBits::eFragment)
-                                                                      .shaderStages();
+    std::vector<vk::PipelineShaderStageCreateInfo> shaderStages =
+        module.loadShader("assets/shaders/triangle/vert.spv", vk::ShaderStageFlagBits::eVertex)
+            .loadShader("assets/shaders/triangle/frag.spv", vk::ShaderStageFlagBits::eFragment)
+            .shaderStages();
 
     vk::GraphicsPipelineCreateInfo pipelineCreateInfo =
         vk::GraphicsPipelineCreateInfo().setLayout(this->pipeline->layouts[0]).setRenderPass(this->renderPass);

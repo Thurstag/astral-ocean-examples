@@ -64,9 +64,10 @@ void DepthRectangleDemo::setUpPipelines() {
     ao::vulkan::ShaderModule module(this->device);
 
     // Load shaders & get shaderStages
-    std::vector<vk::PipelineShaderStageCreateInfo> shaderStages = module.loadShader("data/rec-vert.spv", vk::ShaderStageFlagBits::eVertex)
-                                                                      .loadShader("data/rec-frag.spv", vk::ShaderStageFlagBits::eFragment)
-                                                                      .shaderStages();
+    std::vector<vk::PipelineShaderStageCreateInfo> shaderStages =
+        module.loadShader("assets/shaders/rectangle/vert.spv", vk::ShaderStageFlagBits::eVertex)
+            .loadShader("assets/shaders/rectangle/frag.spv", vk::ShaderStageFlagBits::eFragment)
+            .shaderStages();
 
     vk::GraphicsPipelineCreateInfo pipelineCreateInfo =
         vk::GraphicsPipelineCreateInfo().setLayout(this->pipeline->layouts[0]).setRenderPass(this->renderPass);
