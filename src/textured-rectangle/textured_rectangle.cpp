@@ -9,7 +9,7 @@
 
 TexturedRectangle::~TexturedRectangle() {
     this->model_buffer.reset();
-    this->gpu_uniform_buffer.reset();
+    this->ubo_buffer.reset();
 
     this->device->logical.destroySampler(this->texture_sampler);
 
@@ -149,13 +149,13 @@ void TexturedRectangle::createVulkanBuffers() {
             ->init({sizeof(TexturedVertex) * this->vertices.size(), sizeof(u16) * this->indices.size()})
             ->update(this->vertices.data(), this->indices.data()));
 
-    this->gpu_uniform_buffer = std::unique_ptr<ao::vulkan::DynamicArrayBuffer<UniformBufferObject>>(
+    this->ubo_buffer = std::unique_ptr<ao::vulkan::DynamicArrayBuffer<UniformBufferObject>>(
         (new ao::vulkan::BasicDynamicArrayBuffer<UniformBufferObject>(this->swapchain->buffers.size(), this->device))
             ->init(vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, vk::MemoryPropertyFlagBits::eHostVisible,
                    ao::vulkan::Buffer::CalculateUBOAligmentSize(this->device->physical, sizeof(UniformBufferObject))));
 
     // Map buffer
-    this->gpu_uniform_buffer->map();
+    this->ubo_buffer->map();
 
     // Resize uniform buffers vector
     this->uniform_buffers.resize(this->swapchain->buffers.size());
@@ -252,9 +252,9 @@ void TexturedRectangle::executeSecondaryCommandBuffers(vk::CommandBufferInherita
 }
 
 void TexturedRectangle::beforeCommandBuffersUpdate() {
-    if (!this->clockInit) {
+    if (!this->clock_start) {
         this->clock = std::chrono::system_clock::now();
-        this->clockInit = true;
+        this->clock_start = true;
 
         return;
     }
@@ -272,7 +272,7 @@ void TexturedRectangle::beforeCommandBuffersUpdate() {
     this->uniform_buffers[this->swapchain->frame_index].proj[1][1] *= -1;  // Adapt for vulkan
 
     // Update buffer
-    this->gpu_uniform_buffer->updateFragment(this->swapchain->frame_index, &this->uniform_buffers[this->swapchain->frame_index]);
+    this->ubo_buffer->updateFragment(this->swapchain->frame_index, &this->uniform_buffers[this->swapchain->frame_index]);
 }
 
 vk::QueueFlags TexturedRectangle::queueFlags() const {
@@ -313,7 +313,7 @@ void TexturedRectangle::createDescriptorSets() {
 
     // Configure
     for (size_t i = 0; i < this->swapchain->buffers.size(); i++) {
-        vk::DescriptorBufferInfo bufferInfo(this->gpu_uniform_buffer->buffer(), this->gpu_uniform_buffer->offset(i), sizeof(UniformBufferObject));
+        vk::DescriptorBufferInfo bufferInfo(this->ubo_buffer->buffer(), this->ubo_buffer->offset(i), sizeof(UniformBufferObject));
         this->device->logical.updateDescriptorSets(
             vk::WriteDescriptorSet(this->descriptorSets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &bufferInfo), {});
 

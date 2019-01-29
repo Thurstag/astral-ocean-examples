@@ -32,6 +32,7 @@ int main(int argc, char* argv[]) {
     settings->get<bool>(ao::vulkan::settings::ValidationLayers) = true;
 
     ao::vulkan::Engine* engine;
+    bool exceptionThrown = false;
     try {
         engine = new TriangleDemo(settings);
 
@@ -39,13 +40,21 @@ int main(int argc, char* argv[]) {
         engine->run();
     } catch (ao::core::Exception& e) {
         LOGGER << ao::core::Logger::Level::fatal << e;
+        exceptionThrown = true;
     } catch (std::exception& e) {
         LOGGER << ao::core::Logger::Level::fatal << ao::core::Exception(e.what(), false);
+        exceptionThrown = true;
     } catch (...) {
         LOGGER << ao::core::Logger::Level::fatal << "Unknown exception";
+        exceptionThrown = true;
     }
 
     // Free engine
     delete engine;
+
+    if (exceptionThrown) {
+        std::cout << "Press enter to continue";
+        std::cin.ignore();
+    }
     return 0;
 }

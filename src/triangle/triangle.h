@@ -23,13 +23,13 @@
 class TriangleDemo : public virtual ao::vulkan::GLFWEngine {
    public:
     std::chrono::time_point<std::chrono::system_clock> clock;
-    bool clockInit = false;
+    bool clock_start = false;
 
     std::vector<Vertex> vertices;
     std::vector<u16> indices;
 
-    std::unique_ptr<ao::vulkan::TupleBuffer<Vertex>> vertexBuffer;
-    std::unique_ptr<ao::vulkan::TupleBuffer<u16>> indexBuffer;
+    std::unique_ptr<ao::vulkan::TupleBuffer<Vertex>> vertices_buffer;
+    std::unique_ptr<ao::vulkan::TupleBuffer<u16>> indices_buffer;
 
     explicit TriangleDemo(std::shared_ptr<ao::vulkan::EngineSettings> settings)
         : ao::vulkan::GLFWEngine(settings),

@@ -4,15 +4,19 @@
 
 #include "n-rectangle.h"
 
+#include <boost/range/irange.hpp>
+
 #define RECTANGLE_COUNT 10
 static_assert(RECTANGLE_COUNT <= 10);  // if RECTANGLE_COUNT exceeds 10 it will exceed descriptor layouts max count
 
-RectangleDemo::~RectangleDemo() {
-    this->rectangleBuffer.reset();
-    this->uniformBuffer.reset();
+RectanglesDemo::~RectanglesDemo() {
+    this->object_buffer.reset();
+    this->ubo_buffer.reset();
+
+    // TODO: Found a solution to free command pools
 }
 
-void RectangleDemo::setUpRenderPass() {
+void RectanglesDemo::setUpRenderPass() {
     // Define attachments
     std::array<vk::AttachmentDescription, 2> attachments;
     attachments[0]
@@ -55,14 +59,14 @@ void RectangleDemo::setUpRenderPass() {
         vk::RenderPassCreateInfo(vk::RenderPassCreateFlags(), static_cast<u32>(attachments.size()), attachments.data(), 1, &subpass, 1, &dependency));
 }
 
-void RectangleDemo::createPipelineLayouts() {
+void RectanglesDemo::createPipelineLayouts() {
     this->pipeline->layouts.resize(1);
 
     this->pipeline->layouts.front() = this->device->logical.createPipelineLayout(vk::PipelineLayoutCreateInfo(
         vk::PipelineLayoutCreateFlags(), static_cast<u32>(this->descriptorSetLayouts.size()), this->descriptorSetLayouts.data()));
 }
 
-void RectangleDemo::setUpPipelines() {
+void RectanglesDemo::setUpPipelines() {
     // Create shadermodules
     ao::vulkan::ShaderModule module(this->device);
 
@@ -153,43 +157,53 @@ void RectangleDemo::setUpPipelines() {
     this->pipeline->pipelines = this->device->logical.createGraphicsPipelines(this->pipeline->cache, pipelineCreateInfo);
 }
 
-void RectangleDemo::createVulkanBuffers() {
+void RectanglesDemo::createVulkanBuffers() {
     // Create vertices & indices
-    this->rectangleBuffer = std::unique_ptr<ao::vulkan::TupleBuffer<Vertex, u16>>(
+    this->object_buffer = std::unique_ptr<ao::vulkan::TupleBuffer<Vertex, u16>>(
         (new ao::vulkan::StagingTupleBuffer<Vertex, u16>(this->device, vk::CommandBufferUsageFlagBits::eOneTimeSubmit))
             ->init({sizeof(Vertex) * this->vertices.size(), sizeof(u16) * this->indices.size()})
             ->update(this->vertices.data(), this->indices.data()));
 
-    this->uniformBuffer = std::unique_ptr<ao::vulkan::DynamicArrayBuffer<UniformBufferObject>>(
+    this->ubo_buffer = std::unique_ptr<ao::vulkan::DynamicArrayBuffer<UniformBufferObject>>(
         (new ao::vulkan::BasicDynamicArrayBuffer<UniformBufferObject>(this->swapchain->buffers.size() * RECTANGLE_COUNT, this->device))
             ->init(vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, vk::MemoryPropertyFlagBits::eHostVisible,
                    ao::vulkan::Buffer::CalculateUBOAligmentSize(this->device->physical, sizeof(UniformBufferObject))));
 
     // Map buffer
-    this->uniformBuffer->map();
+    this->ubo_buffer->map();
 
     // Resize uniform buffers vector
-    this->_uniformBuffers.resize(this->swapchain->buffers.size() * RECTANGLE_COUNT);
+    this->uniform_buffers.resize(this->swapchain->buffers.size() * RECTANGLE_COUNT);
 }
 
-void RectangleDemo::createSecondaryCommandBuffers() {
-    // Allocate buffers
-    std::vector<vk::CommandBuffer> buffers = this->device->logical.allocateCommandBuffers(
-        vk::CommandBufferAllocateInfo(this->swapchain->command_pool, vk::CommandBufferLevel::eSecondary, RECTANGLE_COUNT));
+void RectanglesDemo::createSecondaryCommandBuffers() {
+    // Create pools
+    for (size_t i = 0; i < RECTANGLE_COUNT; i++) {
+        this->command_pools.push_back(this->device->logical.createCommandPool(
+            vk::CommandPoolCreateInfo(vk::CommandPoolCreateFlagBits::eResetCommandBuffer, this->device->queues[vk::QueueFlagBits::eGraphics].index)));
+    }
 
     // Add to container
-    this->swapchain->commands["secondary"] = ao::vulkan::structs::CommandData(buffers, this->swapchain->command_pool);
+    for (size_t i = 0; i < RECTANGLE_COUNT; i++) {
+        std::vector<vk::CommandBuffer> buffers = this->device->logical.allocateCommandBuffers(
+            vk::CommandBufferAllocateInfo(this->command_pools[i], vk::CommandBufferLevel::eSecondary, 1));
+
+        this->swapchain->commands[fmt::format("secondary-{}", i)] = ao::vulkan::structs::CommandData(buffers, this->command_pools[i]);
+    }
 }
 
-void RectangleDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex, vk::CommandBuffer primaryCmd) {
+void RectanglesDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex, vk::CommandBuffer primaryCmd) {
     // Create info
     vk::CommandBufferBeginInfo beginInfo =
         vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eRenderPassContinue).setPInheritanceInfo(&inheritanceInfo);
-    ao::vulkan::TupleBuffer<Vertex, u16>* rectangle = this->rectangleBuffer.get();
+    ao::vulkan::TupleBuffer<Vertex, u16>* rectangle = this->object_buffer.get();
 
-    // Draw in commands (TODO: Parallel mode)
-    for (size_t i = 0; i < RECTANGLE_COUNT; i++) {
-        auto& commandBuffer = this->swapchain->commands["secondary"].buffers[i];
+    std::array<vk::CommandBuffer, RECTANGLE_COUNT> sub_commands;
+
+    // Draw in commands
+    auto range = boost::irange(0, RECTANGLE_COUNT);
+    std::for_each(std::execution::par, range.begin(), range.end(), [&](auto i) {
+        auto commandBuffer = this->swapchain->commands[fmt::format("secondary-{}", i)].buffers.front();
 
         commandBuffer.begin(beginInfo);
         {
@@ -212,14 +226,17 @@ void RectangleDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceI
         commandBuffer.end();
 
         // Pass to primary
-        primaryCmd.executeCommands(commandBuffer);
-    }
+        sub_commands[i] = commandBuffer;
+    });
+
+    // Pass to primary
+    primaryCmd.executeCommands(sub_commands);
 }
 
-void RectangleDemo::beforeCommandBuffersUpdate() {
-    if (!this->clockInit) {
+void RectanglesDemo::beforeCommandBuffersUpdate() {
+    if (!this->clock_start) {
         this->clock = std::chrono::system_clock::now();
-        this->clockInit = true;
+        this->clock_start = true;
 
         // Generate vector of rotations
         std::srand(std::time(nullptr));
@@ -234,26 +251,30 @@ void RectangleDemo::beforeCommandBuffersUpdate() {
     float deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(std::chrono::system_clock::now() - this->clock).count();
 
     // Update uniform buffers
-    for (size_t i = 0; i < RECTANGLE_COUNT; i++) {
-        this->_uniformBuffers[(i * this->swapchain->buffers.size()) + this->swapchain->frame_index].model =
+    auto range = boost::irange(0, RECTANGLE_COUNT);
+    std::mutex mutex;
+    std::for_each(std::execution::par, range.begin(), range.end(), [&](auto i) {
+        this->uniform_buffers[(i * this->swapchain->buffers.size()) + this->swapchain->frame_index].model =
             glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(this->rotations[i].first), this->rotations[i].second);
-        this->_uniformBuffers[(i * this->swapchain->buffers.size()) + this->swapchain->frame_index].view =
+        this->uniform_buffers[(i * this->swapchain->buffers.size()) + this->swapchain->frame_index].view =
             glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        this->_uniformBuffers[(i * this->swapchain->buffers.size()) + this->swapchain->frame_index].proj = glm::perspective(
+        this->uniform_buffers[(i * this->swapchain->buffers.size()) + this->swapchain->frame_index].proj = glm::perspective(
             glm::radians(45.0f), this->swapchain->current_extent.width / static_cast<float>(this->swapchain->current_extent.height), 0.1f, 10.0f);
-        this->_uniformBuffers[(i * this->swapchain->buffers.size()) + this->swapchain->frame_index].proj[1][1] *= -1;  // Adapt for vulkan
+        this->uniform_buffers[(i * this->swapchain->buffers.size()) + this->swapchain->frame_index].proj[1][1] *= -1;  // Adapt for vulkan
 
         // Update buffer
-        this->uniformBuffer->updateFragment((i * this->swapchain->buffers.size()) + this->swapchain->frame_index,
-                                            &this->_uniformBuffers[(i * this->swapchain->buffers.size()) + this->swapchain->frame_index]);
-    }
+        mutex.lock();
+        this->ubo_buffer->updateFragment((i * this->swapchain->buffers.size()) + this->swapchain->frame_index,
+                                                 &this->uniform_buffers[(i * this->swapchain->buffers.size()) + this->swapchain->frame_index]);
+        mutex.unlock();
+    });
 }
 
-vk::QueueFlags RectangleDemo::queueFlags() const {
+vk::QueueFlags RectanglesDemo::queueFlags() const {
     return ao::vulkan::GLFWEngine::queueFlags() | vk::QueueFlagBits::eTransfer;  // Enable transfer
 }
 
-void RectangleDemo::createDescriptorSetLayouts() {
+void RectanglesDemo::createDescriptorSetLayouts() {
     // Create binding
     vk::DescriptorSetLayoutBinding binding(0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex);
 
@@ -266,7 +287,7 @@ void RectangleDemo::createDescriptorSetLayouts() {
     }
 }
 
-void RectangleDemo::createDescriptorPools() {
+void RectanglesDemo::createDescriptorPools() {
     vk::DescriptorPoolSize poolSize(vk::DescriptorType::eUniformBuffer, static_cast<u32>(this->swapchain->buffers.size()));
 
     // Create pool
@@ -274,7 +295,7 @@ void RectangleDemo::createDescriptorPools() {
         vk::DescriptorPoolCreateFlags(), static_cast<u32>(this->swapchain->buffers.size() * RECTANGLE_COUNT), 1, &poolSize)));
 }
 
-void RectangleDemo::createDescriptorSets() {
+void RectanglesDemo::createDescriptorSets() {
     vk::DescriptorSetAllocateInfo allocateInfo(this->descriptorPools[0], static_cast<u32>(this->swapchain->buffers.size() * RECTANGLE_COUNT),
                                                this->descriptorSetLayouts.data());
 
@@ -283,7 +304,7 @@ void RectangleDemo::createDescriptorSets() {
 
     // Configure
     for (size_t i = 0; i < this->swapchain->buffers.size() * RECTANGLE_COUNT; i++) {
-        vk::DescriptorBufferInfo bufferInfo(this->uniformBuffer->buffer(), this->uniformBuffer->offset(i), sizeof(UniformBufferObject));
+        vk::DescriptorBufferInfo bufferInfo(this->ubo_buffer->buffer(), this->ubo_buffer->offset(i), sizeof(UniformBufferObject));
         this->device->logical.updateDescriptorSets(
             vk::WriteDescriptorSet(this->descriptorSets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &bufferInfo), {});
     }

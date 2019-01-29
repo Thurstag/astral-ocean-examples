@@ -26,14 +26,14 @@ using pixel_t = unsigned char;
 class TexturedRectangle : public virtual ao::vulkan::GLFWEngine {
    public:
     std::chrono::time_point<std::chrono::system_clock> clock;
-    bool clockInit = false;
+    bool clock_start = false;
 
     std::vector<TexturedVertex> vertices;
     std::vector<u16> indices;
 
-    std::unique_ptr<ao::vulkan::DynamicArrayBuffer<UniformBufferObject>> gpu_uniform_buffer;
+    std::unique_ptr<ao::vulkan::DynamicArrayBuffer<UniformBufferObject>> ubo_buffer;
     std::unique_ptr<ao::vulkan::TupleBuffer<TexturedVertex, u16>> model_buffer;
-    std::tuple<vk::Image, vk::DeviceMemory, vk::ImageView> texture;  // TODO: Destroy
+    std::tuple<vk::Image, vk::DeviceMemory, vk::ImageView> texture;
     vk::Sampler texture_sampler;
 
     std::vector<UniformBufferObject> uniform_buffers;

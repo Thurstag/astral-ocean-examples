@@ -5,8 +5,8 @@
 #include "triangle.h"
 
 TriangleDemo::~TriangleDemo() {
-    this->vertexBuffer.reset();
-    this->indexBuffer.reset();
+    this->vertices_buffer.reset();
+    this->indices_buffer.reset();
 }
 
 void TriangleDemo::setUpRenderPass() {
@@ -132,12 +132,12 @@ void TriangleDemo::setUpPipelines() {
 }
 
 void TriangleDemo::createVulkanBuffers() {
-    this->vertexBuffer = std::unique_ptr<ao::vulkan::TupleBuffer<Vertex>>(
+    this->vertices_buffer = std::unique_ptr<ao::vulkan::TupleBuffer<Vertex>>(
         (new ao::vulkan::StagingTupleBuffer<Vertex>(this->device, vk::CommandBufferUsageFlagBits::eSimultaneousUse, true))
             ->init({sizeof(Vertex) * this->vertices.size()}, vk::BufferUsageFlags(vk::BufferUsageFlagBits::eVertexBuffer))
             ->update(this->vertices.data()));
 
-    this->indexBuffer = std::unique_ptr<ao::vulkan::TupleBuffer<u16>>(
+    this->indices_buffer = std::unique_ptr<ao::vulkan::TupleBuffer<u16>>(
         (new ao::vulkan::StagingTupleBuffer<u16>(this->device, vk::CommandBufferUsageFlagBits::eOneTimeSubmit))
             ->init({sizeof(u16) * this->indices.size()}, vk::BufferUsageFlags(vk::BufferUsageFlagBits::eIndexBuffer))
             ->update(this->indices.data()));
@@ -172,13 +172,13 @@ void TriangleDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceIn
         // Memory barrier
         vk::BufferMemoryBarrier barrier(vk::AccessFlags(), vk::AccessFlagBits::eVertexAttributeRead,
                                         this->device->queues[vk::QueueFlagBits::eTransfer].index,
-                                        this->device->queues[vk::QueueFlagBits::eGraphics].index, this->vertexBuffer->buffer());
+                                        this->device->queues[vk::QueueFlagBits::eGraphics].index, this->vertices_buffer->buffer());
         commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eVertexInput, vk::DependencyFlags(), {},
                                       barrier, {});
 
         // Draw triangle
-        commandBuffer.bindVertexBuffers(0, {this->vertexBuffer->buffer()}, {0});
-        commandBuffer.bindIndexBuffer(this->indexBuffer->buffer(), 0, vk::IndexType::eUint16);
+        commandBuffer.bindVertexBuffers(0, {this->vertices_buffer->buffer()}, {0});
+        commandBuffer.bindIndexBuffer(this->indices_buffer->buffer(), 0, vk::IndexType::eUint16);
 
         commandBuffer.drawIndexed(static_cast<u32>(this->indices.size()), 1, 0, 0, 0);
     }
@@ -189,9 +189,9 @@ void TriangleDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceIn
 }
 
 void TriangleDemo::beforeCommandBuffersUpdate() {
-    if (!this->clockInit) {
+    if (!this->clock_start) {
         this->clock = std::chrono::system_clock::now();
-        this->clockInit = true;
+        this->clock_start = true;
 
         return;
     }
@@ -215,7 +215,7 @@ void TriangleDemo::beforeCommandBuffersUpdate() {
     }
 
     // Update vertex buffer
-    this->vertexBuffer->update(this->vertices.data());
+    this->vertices_buffer->update(this->vertices.data());
 
     // Update clock
     this->clock = std::chrono::system_clock::now();

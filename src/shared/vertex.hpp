@@ -24,7 +24,7 @@ struct TexturedVertex {
     glm::vec3 color;
     glm::vec2 texCoord;
 
-	static vk::VertexInputBindingDescription BindingDescription() {
+    static vk::VertexInputBindingDescription BindingDescription() {
         return vk::VertexInputBindingDescription(0, sizeof(TexturedVertex), vk::VertexInputRate::eVertex);
     }
 

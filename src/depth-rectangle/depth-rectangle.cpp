@@ -5,8 +5,8 @@
 #include "depth-rectangle.h"
 
 DepthRectangleDemo::~DepthRectangleDemo() {
-    this->rectangleBuffer.reset();
-    this->uniformBuffer.reset();
+    this->model_buffer.reset();
+    this->ubo_buffer.reset();
 }
 
 void DepthRectangleDemo::setUpRenderPass() {
@@ -147,21 +147,21 @@ void DepthRectangleDemo::setUpPipelines() {
 
 void DepthRectangleDemo::createVulkanBuffers() {
     // Create vertices & indices
-    this->rectangleBuffer = std::unique_ptr<ao::vulkan::TupleBuffer<Vertex, u16>>(
+    this->model_buffer = std::unique_ptr<ao::vulkan::TupleBuffer<Vertex, u16>>(
         (new ao::vulkan::StagingTupleBuffer<Vertex, u16>(this->device, vk::CommandBufferUsageFlagBits::eOneTimeSubmit))
             ->init({sizeof(Vertex) * this->vertices.size(), sizeof(u16) * this->indices.size()})
             ->update(this->vertices.data(), this->indices.data()));
 
-    this->uniformBuffer = std::unique_ptr<ao::vulkan::DynamicArrayBuffer<UniformBufferObject>>(
+    this->ubo_buffer = std::unique_ptr<ao::vulkan::DynamicArrayBuffer<UniformBufferObject>>(
         (new ao::vulkan::BasicDynamicArrayBuffer<UniformBufferObject>(this->swapchain->buffers.size(), this->device))
             ->init(vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, vk::MemoryPropertyFlagBits::eHostVisible,
                    ao::vulkan::Buffer::CalculateUBOAligmentSize(this->device->physical, sizeof(UniformBufferObject))));
 
     // Map buffer
-    this->uniformBuffer->map();
+    this->ubo_buffer->map();
 
     // Resize uniform buffers vector
-    this->_uniformBuffers.resize(this->swapchain->buffers.size());
+    this->uniform_buffers.resize(this->swapchain->buffers.size());
 }
 
 void DepthRectangleDemo::createSecondaryCommandBuffers() {
@@ -178,7 +178,7 @@ void DepthRectangleDemo::executeSecondaryCommandBuffers(vk::CommandBufferInherit
     // Create info
     vk::CommandBufferBeginInfo beginInfo =
         vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eRenderPassContinue).setPInheritanceInfo(&inheritanceInfo);
-    ao::vulkan::TupleBuffer<Vertex, u16>* rectangle = this->rectangleBuffer.get();
+    ao::vulkan::TupleBuffer<Vertex, u16>* rectangle = this->model_buffer.get();
 
     // Draw in command
     auto& commandBuffer = this->swapchain->commands["secondary"].buffers[0];
@@ -206,9 +206,9 @@ void DepthRectangleDemo::executeSecondaryCommandBuffers(vk::CommandBufferInherit
 }
 
 void DepthRectangleDemo::beforeCommandBuffersUpdate() {
-    if (!this->clockInit) {
+    if (!this->clock_start) {
         this->clock = std::chrono::system_clock::now();
-        this->clockInit = true;
+        this->clock_start = true;
 
         return;
     }
@@ -217,16 +217,16 @@ void DepthRectangleDemo::beforeCommandBuffersUpdate() {
     float deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(std::chrono::system_clock::now() - this->clock).count();
 
     // Update uniform buffer
-    this->_uniformBuffers[this->swapchain->frame_index].model =
+    this->uniform_buffers[this->swapchain->frame_index].model =
         glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    this->_uniformBuffers[this->swapchain->frame_index].view =
+    this->uniform_buffers[this->swapchain->frame_index].view =
         glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    this->_uniformBuffers[this->swapchain->frame_index].proj =
+    this->uniform_buffers[this->swapchain->frame_index].proj =
         glm::perspective(glm::radians(45.0f), this->swapchain->current_extent.width / (float)this->swapchain->current_extent.height, 0.1f, 10.0f);
-    this->_uniformBuffers[this->swapchain->frame_index].proj[1][1] *= -1;  // Adapt for vulkan
+    this->uniform_buffers[this->swapchain->frame_index].proj[1][1] *= -1;  // Adapt for vulkan
 
     // Update buffer
-    this->uniformBuffer->updateFragment(this->swapchain->frame_index, &this->_uniformBuffers[this->swapchain->frame_index]);
+    this->ubo_buffer->updateFragment(this->swapchain->frame_index, &this->uniform_buffers[this->swapchain->frame_index]);
 }
 
 vk::QueueFlags DepthRectangleDemo::queueFlags() const {
@@ -263,7 +263,7 @@ void DepthRectangleDemo::createDescriptorSets() {
 
     // Configure
     for (size_t i = 0; i < this->swapchain->buffers.size(); i++) {
-        vk::DescriptorBufferInfo bufferInfo(this->uniformBuffer->buffer(), this->uniformBuffer->offset(i), sizeof(UniformBufferObject));
+        vk::DescriptorBufferInfo bufferInfo(this->ubo_buffer->buffer(), this->ubo_buffer->offset(i), sizeof(UniformBufferObject));
         this->device->logical.updateDescriptorSets(
             vk::WriteDescriptorSet(this->descriptorSets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &bufferInfo), {});
     }

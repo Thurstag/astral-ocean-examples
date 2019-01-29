@@ -21,21 +21,23 @@
 #include "../shared/ubo.hpp"
 #include "../shared/vertex.hpp"
 
-class RectangleDemo : public virtual ao::vulkan::GLFWEngine {
+class RectanglesDemo : public virtual ao::vulkan::GLFWEngine {
    public:
     std::chrono::time_point<std::chrono::system_clock> clock;
-    bool clockInit = false;
+    bool clock_start = false;
 
     std::vector<Vertex> vertices;
     std::vector<u16> indices;
 
-    std::unique_ptr<ao::vulkan::TupleBuffer<Vertex, u16>> rectangleBuffer;
-    std::unique_ptr<ao::vulkan::DynamicArrayBuffer<UniformBufferObject>> uniformBuffer;
+    std::unique_ptr<ao::vulkan::TupleBuffer<Vertex, u16>> object_buffer;
+    std::unique_ptr<ao::vulkan::DynamicArrayBuffer<UniformBufferObject>> ubo_buffer;
 
-    std::vector<UniformBufferObject> _uniformBuffers;
+    std::vector<UniformBufferObject> uniform_buffers;
     std::vector<std::pair<float, glm::vec3>> rotations;
 
-    explicit RectangleDemo(std::shared_ptr<ao::vulkan::EngineSettings> settings)
+    std::vector<vk::CommandPool> command_pools;
+
+    explicit RectanglesDemo(std::shared_ptr<ao::vulkan::EngineSettings> settings)
         : ao::vulkan::GLFWEngine(settings),
           ao::vulkan::Engine(settings),
           vertices({{{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},
@@ -43,7 +45,7 @@ class RectangleDemo : public virtual ao::vulkan::GLFWEngine {
                     {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}},
                     {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}}}),
           indices({0, 1, 2, 2, 3, 0}){};
-    virtual ~RectangleDemo();
+    virtual ~RectanglesDemo();
 
     void setUpRenderPass() override;
     void createPipelineLayouts() override;
