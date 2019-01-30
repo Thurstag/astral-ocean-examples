@@ -211,10 +211,6 @@ void RectangleDemo::beforeCommandBuffersUpdate() {
     this->ubo_buffer->updateFragment(this->swapchain->currentFrameIndex(), &this->uniform_buffers[this->swapchain->currentFrameIndex()]);
 }
 
-vk::QueueFlags RectangleDemo::queueFlags() const {
-    return ao::vulkan::GLFWEngine::queueFlags() | vk::QueueFlagBits::eTransfer;  // Enable transfer
-}
-
 void RectangleDemo::createDescriptorSetLayouts() {
     // Create binding
     vk::DescriptorSetLayoutBinding binding(0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex);

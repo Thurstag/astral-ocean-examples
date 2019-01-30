@@ -271,10 +271,6 @@ void TexturedRectangle::beforeCommandBuffersUpdate() {
     this->ubo_buffer->updateFragment(this->swapchain->currentFrameIndex(), &this->uniform_buffers[this->swapchain->currentFrameIndex()]);
 }
 
-vk::QueueFlags TexturedRectangle::queueFlags() const {
-    return ao::vulkan::GLFWEngine::queueFlags() | vk::QueueFlagBits::eTransfer;  // Enable transfer
-}
-
 void TexturedRectangle::createDescriptorSetLayouts() {
     // Create bindings
     std::array<vk::DescriptorSetLayoutBinding, 2> bindings;

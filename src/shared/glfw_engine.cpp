@@ -66,8 +66,8 @@ void ao::vulkan::GLFWEngine::initVulkan() {
 
     // Create command pool
     this->secondary_command_pool = std::make_unique<ao::vulkan::CommandPool>(
-        this->device->logical, vk::CommandPoolCreateFlagBits::eResetCommandBuffer, this->device->queues[vk::QueueFlagBits::eGraphics].index,
-        ao::vulkan::CommandPoolAccessModeFlagBits::eConcurrent);
+        this->device->logical, vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
+        this->device->queues[vk::to_string(vk::QueueFlagBits::eGraphics)].family_index, ao::vulkan::CommandPoolAccessModeFlagBits::eConcurrent);
 
     // Init metric module (TODO: DrawCall per second)
     this->metrics = std::make_unique<ao::vulkan::MetricModule>(this->device);
@@ -144,3 +144,7 @@ void ao::vulkan::GLFWEngine::updateCommandBuffers() {
 }
 
 void ao::vulkan::GLFWEngine::afterFrame() {}
+
+std::vector<ao::vulkan::QueueRequest> ao::vulkan::GLFWEngine::requestQueues() const {
+    return {ao::vulkan::QueueRequest(vk::QueueFlagBits::eGraphics, 1), ao::vulkan::QueueRequest(vk::QueueFlagBits::eTransfer, 1)};
+}

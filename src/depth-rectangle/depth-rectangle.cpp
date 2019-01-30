@@ -165,7 +165,8 @@ void DepthRectangleDemo::createVulkanBuffers() {
 }
 
 void DepthRectangleDemo::createSecondaryCommandBuffers() {
-    this->command_buffers = this->secondary_command_pool->allocateCommandBuffers(vk::CommandBufferLevel::eSecondary, this->swapchain->size());
+    this->command_buffers =
+        this->secondary_command_pool->allocateCommandBuffers(vk::CommandBufferLevel::eSecondary, static_cast<u32>(this->swapchain->size()));
 }
 
 void DepthRectangleDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex,
@@ -222,10 +223,6 @@ void DepthRectangleDemo::beforeCommandBuffersUpdate() {
 
     // Update buffer
     this->ubo_buffer->updateFragment(this->swapchain->currentFrameIndex(), &this->uniform_buffers[this->swapchain->currentFrameIndex()]);
-}
-
-vk::QueueFlags DepthRectangleDemo::queueFlags() const {
-    return ao::vulkan::GLFWEngine::queueFlags() | vk::QueueFlagBits::eTransfer;  // Enable transfer
 }
 
 void DepthRectangleDemo::createDescriptorSetLayouts() {

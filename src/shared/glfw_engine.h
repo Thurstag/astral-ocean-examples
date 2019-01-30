@@ -46,6 +46,8 @@ namespace ao::vulkan {
 
         virtual void afterFrame() override;
 
+        virtual std::vector<ao::vulkan::QueueRequest> requestQueues() const override;
+
        private:
         std::unique_ptr<MetricModule> metrics;
     };

@@ -8,7 +8,7 @@
 #include <type_traits>
 
 #include <ao/core/utilities/pointers.h>
-#include <ao/vulkan/engine/wrappers/device.h>
+#include <ao/vulkan/engine/wrapper/device.h>
 #include <ao/vulkan/utilities/vulkan.h>
 #include <vulkan/vulkan.hpp>
 

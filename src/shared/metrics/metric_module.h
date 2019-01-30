@@ -7,7 +7,7 @@
 #include <map>
 
 #include <ao/core/exception/exception.h>
-#include <ao/vulkan/engine/wrappers/device.h>
+#include <ao/vulkan/engine/wrapper/device.h>
 #include <vulkan/vulkan.hpp>
 
 #include "metric.h"

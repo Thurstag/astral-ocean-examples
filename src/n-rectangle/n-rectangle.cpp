@@ -257,10 +257,6 @@ void RectanglesDemo::beforeCommandBuffersUpdate() {
     });
 }
 
-vk::QueueFlags RectanglesDemo::queueFlags() const {
-    return ao::vulkan::GLFWEngine::queueFlags() | vk::QueueFlagBits::eTransfer;  // Enable transfer
-}
-
 void RectanglesDemo::createDescriptorSetLayouts() {
     // Create binding
     vk::DescriptorSetLayoutBinding binding(0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex);

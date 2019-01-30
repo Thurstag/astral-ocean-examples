@@ -10,8 +10,8 @@
 #include <vector>
 
 #include <ao/vulkan/engine/settings.h>
-#include <ao/vulkan/engine/wrappers/shader_module.h>
-#include <ao/vulkan/engine/wrappers/buffers/tuple/staging_buffer.hpp>
+#include <ao/vulkan/engine/wrapper/shader_module.h>
+#include <ao/vulkan/engine/wrapper/buffer/tuple/staging_buffer.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtx/rotate_vector.hpp>
 #include <glm/gtx/string_cast.hpp>
@@ -45,7 +45,6 @@ class TriangleDemo : public virtual ao::vulkan::GLFWEngine {
     void createSecondaryCommandBuffers() override;
     void executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex, vk::CommandBuffer primaryCmd) override;
     void beforeCommandBuffersUpdate() override;
-    vk::QueueFlags queueFlags() const override;
     void createDescriptorSetLayouts() override;
     void createDescriptorPools() override;
     void createDescriptorSets() override;

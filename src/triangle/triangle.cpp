@@ -144,7 +144,8 @@ void TriangleDemo::createVulkanBuffers() {
 }
 
 void TriangleDemo::createSecondaryCommandBuffers() {
-    this->command_buffers = this->secondary_command_pool->allocateCommandBuffers(vk::CommandBufferLevel::eSecondary, this->swapchain->size());
+    this->command_buffers =
+        this->secondary_command_pool->allocateCommandBuffers(vk::CommandBufferLevel::eSecondary, static_cast<u32>(this->swapchain->size()));
 }
 
 void TriangleDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex, vk::CommandBuffer primaryCmd) {
@@ -166,8 +167,9 @@ void TriangleDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceIn
 
         // Memory barrier
         vk::BufferMemoryBarrier barrier(vk::AccessFlags(), vk::AccessFlagBits::eVertexAttributeRead,
-                                        this->device->queues[vk::QueueFlagBits::eTransfer].index,
-                                        this->device->queues[vk::QueueFlagBits::eGraphics].index, this->vertices_buffer->buffer());
+                                        this->device->queues[vk::to_string(vk::QueueFlagBits::eTransfer)].family_index,
+                                        this->device->queues[vk::to_string(vk::QueueFlagBits::eGraphics)].family_index,
+                                        this->vertices_buffer->buffer());
         commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eVertexInput, vk::DependencyFlags(), {},
                                       barrier, {});
 
@@ -214,10 +216,6 @@ void TriangleDemo::beforeCommandBuffersUpdate() {
 
     // Update clock
     this->clock = std::chrono::system_clock::now();
-}
-
-vk::QueueFlags TriangleDemo::queueFlags() const {
-    return ao::vulkan::GLFWEngine::queueFlags() | vk::QueueFlagBits::eTransfer;  // Enable transfer
 }
 
 void TriangleDemo::createDescriptorSetLayouts() {}

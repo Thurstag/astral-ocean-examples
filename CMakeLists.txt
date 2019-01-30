@@ -6,7 +6,6 @@ set(AO_EX_PROJECT_NAME "astral-ocean-examples")
 set(AO_EX_PROJECT_VERSION "0.0.0")
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake")
 set(AO_EX_SUBMODULES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/submodules")
-set(AO_BUILD_TESTS OFF)
 
 # Define dependencies
 set(DEPENDENCIES GLM)
@@ -16,6 +15,9 @@ set(SUBMODULES stb glfw astral-ocean)
 set(glfw_INCLUDE_DIR "${AO_EX_SUBMODULES_DIR}/glfw/include")
 set(stb_INCLUDE_DIR "${AO_EX_SUBMODULES_DIR}/stb")
 set(astral-ocean_INCLUDE_DIR "${AO_EX_SUBMODULES_DIR}/astral-ocean/include")
+
+# Disable tests for astral-ocean
+set(AO_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 
 # Disable GLFW unwanted builds
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
