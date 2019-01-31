@@ -40,6 +40,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Define project name
 project(${AO_EX_PROJECT_NAME} VERSION ${AO_EX_PROJECT_VERSION})
 
+# Include headers
+include_directories("${AO_EX_SUBMODULES_DIR}/astral-ocean/submodules/")
+include_directories(${Boost_INCLUDE_DIR})
+
 # Try to find libraries
 if(NOT CMAKE_VERSION VERSION_LESS 3.7.0)
 	foreach(DEPENDENCY ${DEPENDENCIES})
@@ -75,10 +79,6 @@ foreach(SUBMODULE ${SUBMODULES})
 		message(WARNING "Unable to include ${SUBMODULE} headers (path: ${${SUBMODULE}_INCLUDE_DIR})")
 	endif()
 endforeach()
-
-# Include headers
-include_directories(${Vulkan_INCLUDE_DIR})
-include_directories(${Boost_INCLUDE_DIR})
 
 # Include sub-projects
 add_subdirectory("src")
