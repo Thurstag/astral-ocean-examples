@@ -2,12 +2,9 @@
 // Licensed under GPLv3 or any later version
 // Refer to the LICENSE.md file included.
 
-#include "n-rectangle.h"
+#include "n-rectangles.h"
 
 #include <boost/range/irange.hpp>
-
-#define RECTANGLE_COUNT 10
-static_assert(RECTANGLE_COUNT <= 10);  // if RECTANGLE_COUNT exceeds 10 it will exceed descriptor layouts max count
 
 RectanglesDemo::~RectanglesDemo() {
     this->object_buffer.reset();
@@ -75,7 +72,7 @@ void RectanglesDemo::setUpPipelines() {
             .shaderStages();
 
     vk::GraphicsPipelineCreateInfo pipelineCreateInfo =
-        vk::GraphicsPipelineCreateInfo().setLayout(this->pipeline->layouts[0]).setRenderPass(this->renderPass);
+        vk::GraphicsPipelineCreateInfo().setLayout(this->pipeline->layouts.front()).setRenderPass(this->renderPass);
 
     // Construct the different states making up the pipeline
 
@@ -265,13 +262,11 @@ void RectanglesDemo::createDescriptorSetLayouts() {
     vk::DescriptorSetLayoutCreateInfo createInfo(vk::DescriptorSetLayoutCreateFlags(), 1, &binding);
 
     // Create layouts
-    for (size_t i = 0; i < this->swapchain->size() * RECTANGLE_COUNT; i++) {
-        this->descriptorSetLayouts.push_back(this->device->logical.createDescriptorSetLayout(createInfo));
-    }
+    this->descriptorSetLayouts.push_back(this->device->logical.createDescriptorSetLayout(createInfo));
 }
 
 void RectanglesDemo::createDescriptorPools() {
-    vk::DescriptorPoolSize poolSize(vk::DescriptorType::eUniformBuffer, static_cast<u32>(this->swapchain->size()));
+    vk::DescriptorPoolSize poolSize(vk::DescriptorType::eUniformBuffer, static_cast<u32>(this->swapchain->size() * RECTANGLE_COUNT));
 
     // Create pool
     this->descriptorPools.push_back(this->device->logical.createDescriptorPool(
@@ -279,8 +274,9 @@ void RectanglesDemo::createDescriptorPools() {
 }
 
 void RectanglesDemo::createDescriptorSets() {
-    vk::DescriptorSetAllocateInfo allocateInfo(this->descriptorPools[0], static_cast<u32>(this->swapchain->size() * RECTANGLE_COUNT),
-                                               this->descriptorSetLayouts.data());
+    std::vector<vk::DescriptorSetLayout> layouts(this->swapchain->size() * RECTANGLE_COUNT, this->descriptorSetLayouts.front());
+    vk::DescriptorSetAllocateInfo allocateInfo(this->descriptorPools.front(), static_cast<u32>(this->swapchain->size() * RECTANGLE_COUNT),
+                                               layouts.data());
 
     // Create sets
     this->descriptorSets = this->device->logical.allocateDescriptorSets(allocateInfo);

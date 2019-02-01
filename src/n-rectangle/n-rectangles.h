@@ -8,6 +8,7 @@
 #include <vector>
 
 #define GLM_ENABLE_EXPERIMENTAL
+#define RECTANGLE_COUNT 1000
 
 #include <ao/vulkan/engine/settings.h>
 #include <ao/vulkan/engine/wrapper/shader_module.h>

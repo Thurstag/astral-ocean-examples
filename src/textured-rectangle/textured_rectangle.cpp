@@ -289,7 +289,7 @@ void TexturedRectangle::createDescriptorSetLayouts() {
 void TexturedRectangle::createDescriptorPools() {
     std::array<vk::DescriptorPoolSize, 2> poolSizes;
     poolSizes[0] = vk::DescriptorPoolSize(vk::DescriptorType::eUniformBuffer, static_cast<u32>(this->swapchain->size()));
-    poolSizes[0] = vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler, static_cast<u32>(this->swapchain->size()));
+    poolSizes[1] = vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler, static_cast<u32>(this->swapchain->size()));
 
     // Create pool
     this->descriptorPools.push_back(this->device->logical.createDescriptorPool(vk::DescriptorPoolCreateInfo(
