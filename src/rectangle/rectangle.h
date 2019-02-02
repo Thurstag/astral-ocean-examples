@@ -44,7 +44,7 @@ class RectangleDemo : public virtual ao::vulkan::GLFWEngine {
           indices({0, 1, 2, 2, 3, 0}){};
     virtual ~RectangleDemo();
 
-    void setUpRenderPass() override;
+    vk::RenderPass createRenderPass() override;
     void createPipelineLayouts() override;
     void setUpPipelines() override;
     void createVulkanBuffers() override;

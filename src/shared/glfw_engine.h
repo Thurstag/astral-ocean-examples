@@ -25,6 +25,8 @@ namespace ao::vulkan {
         explicit GLFWEngine(std::shared_ptr<EngineSettings> settings);
         virtual ~GLFWEngine();
 
+        static void OnFramebufferSizeCallback(GLFWwindow* window, int width, int height);
+
        protected:
         std::unique_ptr<CommandPool> secondary_command_pool;
         std::vector<vk::CommandBuffer> command_buffers;

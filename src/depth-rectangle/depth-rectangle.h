@@ -49,7 +49,7 @@ class DepthRectangleDemo : public virtual ao::vulkan::GLFWEngine {
           indices({0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4}){};
     virtual ~DepthRectangleDemo();
 
-    void setUpRenderPass() override;
+    vk::RenderPass createRenderPass() override;
     void createPipelineLayouts() override;
     void setUpPipelines() override;
     void createVulkanBuffers() override;

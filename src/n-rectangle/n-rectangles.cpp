@@ -4,6 +4,8 @@
 
 #include "n-rectangles.h"
 
+#include <execution>
+
 #include <boost/range/irange.hpp>
 
 RectanglesDemo::~RectanglesDemo() {
@@ -11,7 +13,7 @@ RectanglesDemo::~RectanglesDemo() {
     this->ubo_buffer.reset();
 }
 
-void RectanglesDemo::setUpRenderPass() {
+vk::RenderPass RectanglesDemo::createRenderPass() {
     // Define attachments
     std::array<vk::AttachmentDescription, 2> attachments;
     attachments[0]
@@ -50,7 +52,7 @@ void RectanglesDemo::setUpRenderPass() {
                                            .setDstAccessMask(vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite);
 
     // Create render pass
-    this->renderPass = this->device->logical.createRenderPass(
+    return this->device->logical.createRenderPass(
         vk::RenderPassCreateInfo(vk::RenderPassCreateFlags(), static_cast<u32>(attachments.size()), attachments.data(), 1, &subpass, 1, &dependency));
 }
 
@@ -67,12 +69,12 @@ void RectanglesDemo::setUpPipelines() {
 
     // Load shaders & get shaderStages
     std::vector<vk::PipelineShaderStageCreateInfo> shaderStages =
-        module.loadShader("assets/shaders/rectangle/vert.spv", vk::ShaderStageFlagBits::eVertex)
-            .loadShader("assets/shaders/rectangle/frag.spv", vk::ShaderStageFlagBits::eFragment)
+        module.loadShader(vk::ShaderStageFlagBits::eVertex, "assets/shaders/rectangle/vert.spv")
+            .loadShader(vk::ShaderStageFlagBits::eFragment, "assets/shaders/rectangle/frag.spv")
             .shaderStages();
 
     vk::GraphicsPipelineCreateInfo pipelineCreateInfo =
-        vk::GraphicsPipelineCreateInfo().setLayout(this->pipeline->layouts.front()).setRenderPass(this->renderPass);
+        vk::GraphicsPipelineCreateInfo().setLayout(this->pipeline->layouts.front()).setRenderPass(this->render_pass);
 
     // Construct the different states making up the pipeline
 
@@ -145,7 +147,7 @@ void RectanglesDemo::setUpPipelines() {
         .setPMultisampleState(&multisampleState)
         .setPViewportState(&viewportState)
         .setPDepthStencilState(&depthStencilState)
-        .setRenderPass(renderPass)
+        .setRenderPass(this->render_pass)
         .setPDynamicState(&dynamicState);
 
     // Create rendering pipeline using the specified states
@@ -172,8 +174,8 @@ void RectanglesDemo::createVulkanBuffers() {
 }
 
 void RectanglesDemo::createSecondaryCommandBuffers() {
-    this->command_buffers =
-        this->secondary_command_pool->allocateCommandBuffers(vk::CommandBufferLevel::eSecondary, RECTANGLE_COUNT * this->swapchain->size());
+    this->command_buffers = this->secondary_command_pool->allocateCommandBuffers(vk::CommandBufferLevel::eSecondary,
+                                                                                 static_cast<u32>(RECTANGLE_COUNT * this->swapchain->size()));
 }
 
 void RectanglesDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex, vk::CommandBuffer primaryCmd) {
@@ -235,7 +237,7 @@ void RectanglesDemo::beforeCommandBuffersUpdate() {
     float deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(std::chrono::system_clock::now() - this->clock).count();
 
     // Update uniform buffers
-    auto range = boost::irange(0, RECTANGLE_COUNT);
+    auto range = boost::irange<u64>(0, RECTANGLE_COUNT);
     std::mutex mutex;
     std::for_each(std::execution::par, range.begin(), range.end(), [&](auto i) {
         this->uniform_buffers[(i * this->swapchain->size()) + this->swapchain->currentFrameIndex()].model =

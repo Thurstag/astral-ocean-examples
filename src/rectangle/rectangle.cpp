@@ -9,7 +9,7 @@ RectangleDemo::~RectangleDemo() {
     this->ubo_buffer.reset();
 }
 
-void RectangleDemo::setUpRenderPass() {
+vk::RenderPass RectangleDemo::createRenderPass() {
     // Define attachments
     std::array<vk::AttachmentDescription, 1> attachments;
     attachments[0]
@@ -37,7 +37,7 @@ void RectangleDemo::setUpRenderPass() {
                                            .setDstAccessMask(vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite);
 
     // Create render pass
-    this->renderPass = this->device->logical.createRenderPass(
+    return this->device->logical.createRenderPass(
         vk::RenderPassCreateInfo(vk::RenderPassCreateFlags(), static_cast<u32>(attachments.size()), attachments.data(), 1, &subpass, 1, &dependency));
 }
 
@@ -54,12 +54,12 @@ void RectangleDemo::setUpPipelines() {
 
     // Load shaders & get shaderStages
     std::vector<vk::PipelineShaderStageCreateInfo> shaderStages =
-        module.loadShader("assets/shaders/rectangle/vert.spv", vk::ShaderStageFlagBits::eVertex)
-            .loadShader("assets/shaders/rectangle/frag.spv", vk::ShaderStageFlagBits::eFragment)
+        module.loadShader(vk::ShaderStageFlagBits::eVertex, "assets/shaders/rectangle/vert.spv")
+            .loadShader(vk::ShaderStageFlagBits::eFragment, "assets/shaders/rectangle/frag.spv")
             .shaderStages();
 
     vk::GraphicsPipelineCreateInfo pipelineCreateInfo =
-        vk::GraphicsPipelineCreateInfo().setLayout(this->pipeline->layouts[0]).setRenderPass(this->renderPass);
+        vk::GraphicsPipelineCreateInfo().setLayout(this->pipeline->layouts[0]).setRenderPass(this->render_pass);
 
     // Construct the different states making up the pipeline
 
@@ -126,7 +126,7 @@ void RectangleDemo::setUpPipelines() {
         .setPMultisampleState(&multisampleState)
         .setPViewportState(&viewportState)
         .setPDepthStencilState(&depthStencilState)
-        .setRenderPass(renderPass)
+        .setRenderPass(this->render_pass)
         .setPDynamicState(&dynamicState);
 
     // Create rendering pipeline using the specified states

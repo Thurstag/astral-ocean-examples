@@ -20,6 +20,10 @@ ao::vulkan::GLFWEngine::~GLFWEngine() {
     this->secondary_command_pool.reset();
 }
 
+void ao::vulkan::GLFWEngine::OnFramebufferSizeCallback(GLFWwindow* window, int width, int height) {
+    static_cast<ao::vulkan::GLFWEngine*>(glfwGetWindowUserPointer(window))->enforce_resize = true;
+}
+
 void ao::vulkan::GLFWEngine::initWindow() {
     glfwInit();
 
@@ -36,6 +40,9 @@ void ao::vulkan::GLFWEngine::initWindow() {
     this->window = glfwCreateWindow(static_cast<int>(this->settings_->get<u64>(ao::vulkan::settings::WindowWidth)),
                                     static_cast<int>(this->settings_->get<u64>(ao::vulkan::settings::WindowHeight)),
                                     this->settings_->get<std::string>(ao::vulkan::settings::WindowTitle).c_str(), nullptr, nullptr);
+
+    glfwSetWindowUserPointer(this->window, this);
+    glfwSetFramebufferSizeCallback(this->window, ao::vulkan::GLFWEngine::OnFramebufferSizeCallback);
 }
 
 vk::SurfaceKHR ao::vulkan::GLFWEngine::createSurface() {
@@ -124,7 +131,7 @@ void ao::vulkan::GLFWEngine::updateCommandBuffers() {
     clearValues[0].setColor(vk::ClearColorValue());
     clearValues[1].setDepthStencil(vk::ClearDepthStencilValue(1));
 
-    vk::RenderPassBeginInfo render_pass_info(this->renderPass, frame, vk::Rect2D().setExtent(this->swapchain->extent()),
+    vk::RenderPassBeginInfo render_pass_info(this->render_pass, frame, vk::Rect2D().setExtent(this->swapchain->extent()),
                                              static_cast<u32>(clearValues.size()), clearValues.data());
 
     command.begin(&begin_info);
@@ -133,7 +140,7 @@ void ao::vulkan::GLFWEngine::updateCommandBuffers() {
     command.beginRenderPass(render_pass_info, vk::SubpassContents::eSecondaryCommandBuffers);
     {
         // Create inheritance info for the secondary command buffers
-        vk::CommandBufferInheritanceInfo inheritanceInfo(this->renderPass, 0, frame);
+        vk::CommandBufferInheritanceInfo inheritanceInfo(this->render_pass, 0, frame);
 
         // Execute secondary command buffers
         this->executeSecondaryCommandBuffers(inheritanceInfo, this->swapchain->currentFrameIndex(), command);

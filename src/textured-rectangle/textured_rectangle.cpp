@@ -18,7 +18,7 @@ TexturedRectangle::~TexturedRectangle() {
     this->device->logical.freeMemory(std::get<1>(this->texture));
 }
 
-void TexturedRectangle::setUpRenderPass() {
+vk::RenderPass TexturedRectangle::createRenderPass() {
     // Define attachments
     std::array<vk::AttachmentDescription, 1> attachments;
     attachments[0]
@@ -46,7 +46,7 @@ void TexturedRectangle::setUpRenderPass() {
                                            .setDstAccessMask(vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite);
 
     // Create render pass
-    this->renderPass = this->device->logical.createRenderPass(
+    return this->device->logical.createRenderPass(
         vk::RenderPassCreateInfo(vk::RenderPassCreateFlags(), static_cast<u32>(attachments.size()), attachments.data(), 1, &subpass, 1, &dependency));
 }
 
@@ -63,12 +63,12 @@ void TexturedRectangle::setUpPipelines() {
 
     // Load shaders & get shaderStages
     std::vector<vk::PipelineShaderStageCreateInfo> shaderStages =
-        module.loadShader("assets/shaders/textured-rectangle/vert.spv", vk::ShaderStageFlagBits::eVertex)
-            .loadShader("assets/shaders/textured-rectangle/frag.spv", vk::ShaderStageFlagBits::eFragment)
+        module.loadShader(vk::ShaderStageFlagBits::eVertex, "assets/shaders/textured-rectangle/vert.spv")
+            .loadShader(vk::ShaderStageFlagBits::eFragment, "assets/shaders/textured-rectangle/frag.spv")
             .shaderStages();
 
     vk::GraphicsPipelineCreateInfo pipelineCreateInfo =
-        vk::GraphicsPipelineCreateInfo().setLayout(this->pipeline->layouts[0]).setRenderPass(this->renderPass);
+        vk::GraphicsPipelineCreateInfo().setLayout(this->pipeline->layouts[0]).setRenderPass(this->render_pass);
 
     // Construct the differnent states making up the pipeline
 
@@ -135,7 +135,7 @@ void TexturedRectangle::setUpPipelines() {
         .setPMultisampleState(&multisampleState)
         .setPViewportState(&viewportState)
         .setPDepthStencilState(&depthStencilState)
-        .setRenderPass(renderPass)
+        .setRenderPass(this->render_pass)
         .setPDynamicState(&dynamicState);
 
     // Create rendering pipeline using the specified states
