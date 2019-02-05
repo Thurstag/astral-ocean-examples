@@ -9,35 +9,43 @@
 #include "metric.h"
 
 namespace ao::vulkan {
-    /// <summary>
-    /// CounterMetric class
-    /// </summary>
+    /**
+     * @brief Counter metric
+     *
+     * @tparam Period Period
+     * @tparam Type Counter type
+     */
     template<class Period, class Type>
     class CounterMetric : public Metric {
        public:
-        /// <summary>
-        /// Constructor
-        /// </summary>
-        /// <param name="default">Default value</param>
+        /**
+         * @brief Construct a new CounterMetric object
+         *
+         * @param default Default value
+         */
         CounterMetric(Type default) : count(default), old(default), default(default){};
 
-        /// <summary>
-        /// Destructor
-        /// </summary>
+        /**
+         * @brief Destroy the CounterMetric object
+         *
+         */
         virtual ~CounterMetric() = default;
 
-        /// <summary>
-        /// Method to increment count
-        /// </summary>
-        /// <param name="count">Count</param>
+        /**
+         * @brief Increment counter
+         *
+         * @param count Count
+         */
         void increment(Type count = 1) {
             this->count += count;
         }
 
-        /// <summary>
-        /// Method to know if it must be reset
-        /// </summary>
-        /// <returns>True or False</returns>
+        /**
+         * @brief
+         *
+         * @return true Counter need to be reset
+         * @return false Counter doesn't need to be reset
+         */
         bool hasToBeReset() {
             return std::chrono::duration_cast<Period>(std::chrono::system_clock::now() - this->clock).count() > 0;
         }

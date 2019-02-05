@@ -15,51 +15,61 @@
 #include "metric.h"
 
 namespace ao::vulkan {
-    /// <summary>
-    /// DurationMetric class
-    /// </summary>
+    /**
+     * @brief Duration metric
+     *
+     */
     class DurationMetric : public Metric {
        public:
-        /// <summary>
-        /// Constructor
-        /// </summary>
-        /// <param name="unit">Unit</param>
+        /**
+         * @brief Construct a new DurationMetric object
+         *
+         * @param unit Unit
+         */
         DurationMetric(std::string unit) : unit(unit){};
 
-        /// <summary>
-        /// Destructor
-        /// </summary>
+        /**
+         * @brief Destroy the DurationMetric object
+         *
+         */
         virtual ~DurationMetric() = default;
 
-        /// <summary>
-        /// Method to start metric recording
-        /// </summary>
+        /**
+         * @brief Start
+         *
+         */
         virtual void start() = 0;
 
-        /// <summary>
-        /// Method to stop metric recording
-        /// </summary>
+        /**
+         * @brief Stop
+         *
+         */
         virtual void stop() = 0;
 
        protected:
         std::string unit;
     };
 
-    /// <summary>
-    /// BasicDurationMetric class
-    /// </summary>
+    /**
+     * @brief Basic implementation of DurationMetric
+     *
+     * @tparam Period
+     * @tparam 2
+     */
     template<class Period, size_t Precision = 2>
     class BasicDurationMetric : public DurationMetric {
        public:
-        /// <summary>
-        /// Constructor
-        /// </summary>
-        /// <param name="unit">Unit</param>
+        /**
+         * @brief Construct a new BasicDurationMetric object
+         *
+         * @param unit Unit
+         */
         BasicDurationMetric(std::string unit) : DurationMetric(unit){};
 
-        /// <summary>
-        /// Destructor
-        /// </summary>
+        /**
+         * @brief Destroy the BasicDurationMetric object
+         *
+         */
         virtual ~BasicDurationMetric() = default;
 
         void start() override {
@@ -84,25 +94,31 @@ namespace ao::vulkan {
         std::chrono::time_point<std::chrono::system_clock> _stop;
     };
 
-    /// <summary>
-    /// CommandBufferMetric class
-    /// </summary>
+    /**
+     * @brief Command buffer metric
+     *
+     * @tparam Period Period
+     * @tparam Index Query index
+     * @tparam Precision Precision
+     */
     template<class Period, size_t Index = 0, size_t Precision = 4>
     class CommandBufferMetric : public DurationMetric {
        public:
-        /// <summary>
-        /// Constructor
-        /// </summary>
-        /// <param name="unit">Unit</param>
-        /// <param name="module">Module</param>
+        /**
+         * @brief Construct a new CommandBufferMetric object
+         *
+         * @param unit
+         * @param module
+         */
         CommandBufferMetric(std::string unit, std::pair<std::weak_ptr<ao::vulkan::Device>, vk::QueryPool> module)
             : DurationMetric(unit), module(module) {
             this->period = ao::core::shared(this->module.first)->physical.getProperties().limits.timestampPeriod;
         };
 
-        /// <summary>
-        /// Destructor
-        /// </summary>
+        /**
+         * @brief Destroy the CommandBufferMetric object
+         *
+         */
         virtual ~CommandBufferMetric() = default;
 
         void start() override {}

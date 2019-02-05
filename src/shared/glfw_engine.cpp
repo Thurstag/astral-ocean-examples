@@ -11,9 +11,6 @@
 
 ao::vulkan::GLFWEngine::GLFWEngine(std::shared_ptr<EngineSettings> settings) : Engine(settings), window(nullptr) {}
 
-/// <summary>
-/// Destructor
-/// </summary>
 ao::vulkan::GLFWEngine::~GLFWEngine() {
     this->freeWindow();
 

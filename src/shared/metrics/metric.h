@@ -5,30 +5,35 @@
 #pragma once
 
 namespace ao::vulkan {
-    /// <summary>
-    /// Metric class
-    /// </summary>
+    /**
+     * @brief Metric
+     *
+     */
     class Metric {
        public:
-        /// <summary>
-        /// Constructor
-        /// </summary>
+        /**
+         * @brief Construct a new Metric object
+         *
+         */
         Metric() = default;
 
-        /// <summary>
-        /// Destructor
-        /// </summary>
+        /**
+         * @brief Destroy the Metric object
+         *
+         */
         virtual ~Metric() = default;
 
-        /// <summary>
-        /// Method to reset
-        /// </summary>
+        /**
+         * @brief Reset metrics
+         *
+         */
         virtual void reset() = 0;
 
-        /// <summary>
-        /// Method to string
-        /// </summary>
-        /// <returns>String representation</returns>
+        /**
+         * @brief String representation
+         *
+         * @return std::string String
+         */
         virtual std::string str() = 0;
     };
 }  // namespace ao::vulkan

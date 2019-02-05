@@ -13,50 +13,59 @@
 #include "metric.h"
 
 namespace ao::vulkan {
-    /// <summary>
-    /// Metric module class
-    /// </summary>
+    /**
+     * @brief Metric module
+     *
+     */
     class MetricModule {
        public:
-        /// <summary>
-        /// Constructor
-        /// </summary>
-        /// <param name="device">Device</param>
+        /**
+         * @brief Construct a new MetricModule object
+         *
+         * @param device Device
+         */
         explicit MetricModule(std::weak_ptr<Device> device);
 
-        /// <summary>
-        /// Destructor
-        /// </summary>
+        /**
+         * @brief Destroy the MetricModule object
+         *
+         */
         virtual ~MetricModule();
 
-        /// <summary>
-        /// Operator[]
-        /// </summary>
-        /// <param name="name">Metric's name</param>
+        /**
+         * @brief Operator[]
+         *
+         * @param name Metric's name
+         * @return Metric* Metric
+         */
         Metric* operator[](std::string name);
 
-        /// <summary>
-        /// Method to add a metric
-        /// </summary>
-        /// <param name="name">Metric's ame</param>
-        /// <param name="metric">Metric</param>
+        /**
+         * @brief Add a metric
+         *
+         * @param name Metric's name
+         * @param metric Metric
+         */
         void add(std::string name, Metric* metric);
 
-        /// <summary>
-        /// Method to reset all metrics
-        /// </summary>
+        /**
+         * @brief Reset
+         *
+         */
         void reset();
 
-        /// <summary>
-        /// Method to get query pool
-        /// </summary>
-        /// <returns></returns>
+        /**
+         * @brief Query pool
+         *
+         * @return vk::QueryPool Query pool
+         */
         vk::QueryPool queryPool();
 
-        /// <summary>
-        /// Method to string
-        /// </summary>
-        /// <returns>String representation</returns>
+        /**
+         * @brief String representation
+         *
+         * @return std::string String
+         */
         std::string str();
 
        private:
