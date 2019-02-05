@@ -182,13 +182,10 @@ void RectanglesDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritance
     // Create info
     vk::CommandBufferBeginInfo beginInfo =
         vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eRenderPassContinue).setPInheritanceInfo(&inheritanceInfo);
-    ao::vulkan::TupleBuffer<Vertex, u16>* rectangle = this->object_buffer.get();
-
-    std::array<vk::CommandBuffer, RECTANGLE_COUNT> sub_commands;
 
     // Draw in commands
-    auto range = boost::irange(0, RECTANGLE_COUNT);
-    std::for_each(std::execution::par, range.begin(), range.end(), [&](auto i) {
+    auto range = boost::irange<u64>(0, RECTANGLE_COUNT);
+    std::for_each(std::execution::par_unseq, range.begin(), range.end(), [&](auto i) {
         auto commandBuffer = this->command_buffers[(i * this->swapchain->size()) + frameIndex];
 
         commandBuffer.begin(beginInfo);
@@ -202,8 +199,8 @@ void RectanglesDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritance
             commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, this->pipeline->pipelines[0]);
 
             // Draw rectangle
-            commandBuffer.bindVertexBuffers(0, rectangle->buffer(), {0});
-            commandBuffer.bindIndexBuffer(rectangle->buffer(), rectangle->offset(1), vk::IndexType::eUint16);
+            commandBuffer.bindVertexBuffers(0, this->object_buffer->buffer(), {0});
+            commandBuffer.bindIndexBuffer(this->object_buffer->buffer(), this->object_buffer->offset(1), vk::IndexType::eUint16);
             commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->pipeline->layouts[0], 0,
                                              this->descriptorSets[(i * this->swapchain->size()) + frameIndex], {});
 
@@ -238,8 +235,7 @@ void RectanglesDemo::beforeCommandBuffersUpdate() {
 
     // Update uniform buffers
     auto range = boost::irange<u64>(0, RECTANGLE_COUNT);
-    std::mutex mutex;
-    std::for_each(std::execution::par, range.begin(), range.end(), [&](auto i) {
+    std::for_each(std::execution::par_unseq, range.begin(), range.end(), [&](auto i) {
         this->uniform_buffers[(i * this->swapchain->size()) + this->swapchain->currentFrameIndex()].model =
             glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(this->rotations[i].first), this->rotations[i].second);
         this->uniform_buffers[(i * this->swapchain->size()) + this->swapchain->currentFrameIndex()].view =
@@ -249,10 +245,8 @@ void RectanglesDemo::beforeCommandBuffersUpdate() {
         this->uniform_buffers[(i * this->swapchain->size()) + this->swapchain->currentFrameIndex()].proj[1][1] *= -1;  // Adapt for vulkan
 
         // Update buffer
-        mutex.lock();
         this->ubo_buffer->updateFragment((i * this->swapchain->size()) + this->swapchain->currentFrameIndex(),
                                          &this->uniform_buffers[(i * this->swapchain->size()) + this->swapchain->currentFrameIndex()]);
-        mutex.unlock();
     });
 }
 

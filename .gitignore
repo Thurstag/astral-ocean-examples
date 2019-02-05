@@ -97,3 +97,6 @@ assets_compiled
 
 # Doxygen
 docs/xml/
+
+# VS Code
+.vscode/

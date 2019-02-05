@@ -43,6 +43,7 @@ project(${AO_EX_PROJECT_NAME} VERSION ${AO_EX_PROJECT_VERSION})
 # Include headers
 include_directories("${AO_EX_SUBMODULES_DIR}/astral-ocean/submodules/")
 include_directories(${Boost_INCLUDE_DIR})
+link_directories(${Boost_LIBRARY_DIR})
 
 # Try to find libraries
 if(NOT CMAKE_VERSION VERSION_LESS 3.7.0)

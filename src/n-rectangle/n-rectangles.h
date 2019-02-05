@@ -33,6 +33,8 @@ class RectanglesDemo : public virtual ao::vulkan::GLFWEngine {
     std::unique_ptr<ao::vulkan::TupleBuffer<Vertex, u16>> object_buffer;
     std::unique_ptr<ao::vulkan::DynamicArrayBuffer<UniformBufferObject>> ubo_buffer;
 
+    std::array<vk::CommandBuffer, RECTANGLE_COUNT> sub_commands;
+
     std::vector<UniformBufferObject> uniform_buffers;
     std::vector<std::pair<float, glm::vec3>> rotations;
 

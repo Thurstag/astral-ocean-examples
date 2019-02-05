@@ -4,10 +4,6 @@
 
 #include <iostream>
 
-#if defined(_DEBUG) && defined(_WIN32)
-#include <vld.h>
-#endif
-
 #define GLM_FORCE_RADIANS 1
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE 1
 
