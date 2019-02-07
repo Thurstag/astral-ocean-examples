@@ -50,13 +50,9 @@ class DepthRectangleDemo : public virtual ao::vulkan::GLFWEngine {
     virtual ~DepthRectangleDemo();
 
     vk::RenderPass createRenderPass() override;
-    void createPipelineLayouts() override;
-    void setUpPipelines() override;
+    void createPipelines() override;
     void createVulkanBuffers() override;
     void createSecondaryCommandBuffers() override;
     void executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex, vk::CommandBuffer primaryCmd) override;
     void beforeCommandBuffersUpdate() override;
-    void createDescriptorSetLayouts() override;
-    void createDescriptorPools() override;
-    void createDescriptorSets() override;
 };

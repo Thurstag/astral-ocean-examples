@@ -5,6 +5,7 @@
 #include "textured_rectangle.h"
 
 #define STB_IMAGE_IMPLEMENTATION
+#include <ao/vulkan/engine/wrapper/pipeline/graphics_pipeline.h>
 #include <stb_image.h>
 
 TexturedRectangle::~TexturedRectangle() {
@@ -50,96 +51,99 @@ vk::RenderPass TexturedRectangle::createRenderPass() {
         vk::RenderPassCreateInfo(vk::RenderPassCreateFlags(), static_cast<u32>(attachments.size()), attachments.data(), 1, &subpass, 1, &dependency));
 }
 
-void TexturedRectangle::createPipelineLayouts() {
-    this->pipeline->layouts.resize(1);
+void TexturedRectangle::createPipelines() {
+    /* PIPELINE LAYOUT PART */
 
-    this->pipeline->layouts.front() = this->device->logical.createPipelineLayout(vk::PipelineLayoutCreateInfo(
-        vk::PipelineLayoutCreateFlags(), static_cast<u32>(this->descriptorSetLayouts.size()), this->descriptorSetLayouts.data()));
-}
+    // Create bindings
+    std::array<vk::DescriptorSetLayoutBinding, 2> bindings;
+    bindings[0] = vk::DescriptorSetLayoutBinding(0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex);
+    bindings[1] = vk::DescriptorSetLayoutBinding(1, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment);
 
-void TexturedRectangle::setUpPipelines() {
+    // Create layout
+    std::vector<vk::DescriptorSetLayout> descriptor_set_layouts;
+    descriptor_set_layouts.push_back(this->device->logical.createDescriptorSetLayout(
+        vk::DescriptorSetLayoutCreateInfo(vk::DescriptorSetLayoutCreateFlags(), static_cast<u32>(bindings.size()), bindings.data())));
+
+    auto pipeline_layout = std::make_shared<ao::vulkan::PipelineLayout>(this->device, descriptor_set_layouts);
+
+    /* PIPELINE PART */
+
     // Create shadermodules
     ao::vulkan::ShaderModule module(this->device);
 
     // Load shaders & get shaderStages
-    std::vector<vk::PipelineShaderStageCreateInfo> shaderStages =
+    std::vector<vk::PipelineShaderStageCreateInfo> shader_stages =
         module.loadShader(vk::ShaderStageFlagBits::eVertex, "assets/shaders/textured-rectangle/vert.spv")
             .loadShader(vk::ShaderStageFlagBits::eFragment, "assets/shaders/textured-rectangle/frag.spv")
             .shaderStages();
 
-    vk::GraphicsPipelineCreateInfo pipelineCreateInfo =
-        vk::GraphicsPipelineCreateInfo().setLayout(this->pipeline->layouts[0]).setRenderPass(this->render_pass);
-
     // Construct the differnent states making up the pipeline
 
-    // Set pipeline shader stage info
-    pipelineCreateInfo.stageCount = static_cast<u32>(shaderStages.size());
-    pipelineCreateInfo.pStages = shaderStages.data();
-
     // Input assembly state
-    vk::PipelineInputAssemblyStateCreateInfo inputAssemblyState(vk::PipelineInputAssemblyStateCreateFlags(), vk::PrimitiveTopology::eTriangleList);
+    vk::PipelineInputAssemblyStateCreateInfo input_state(vk::PipelineInputAssemblyStateCreateFlags(), vk::PrimitiveTopology::eTriangleList);
 
     // Rasterization state
-    vk::PipelineRasterizationStateCreateInfo rasterizationState = vk::PipelineRasterizationStateCreateInfo()
-                                                                      .setPolygonMode(vk::PolygonMode::eFill)
-                                                                      .setCullMode(vk::CullModeFlagBits::eBack)
-                                                                      .setFrontFace(vk::FrontFace::eCounterClockwise)
-                                                                      .setLineWidth(1.0f);
+    vk::PipelineRasterizationStateCreateInfo rasterization_state = vk::PipelineRasterizationStateCreateInfo()
+                                                                       .setPolygonMode(vk::PolygonMode::eFill)
+                                                                       .setCullMode(vk::CullModeFlagBits::eBack)
+                                                                       .setFrontFace(vk::FrontFace::eCounterClockwise)
+                                                                       .setLineWidth(1.0f);
 
     // Color blend state
-    std::array<vk::PipelineColorBlendAttachmentState, 1> blendAttachmentState;
-    blendAttachmentState[0].setColorWriteMask(vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB |
-                                              vk::ColorComponentFlagBits::eA);
+    std::array<vk::PipelineColorBlendAttachmentState, 1> blend_attachments;
+    blend_attachments[0].setColorWriteMask(vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB |
+                                           vk::ColorComponentFlagBits::eA);
 
-    vk::PipelineColorBlendStateCreateInfo colorBlendState = vk::PipelineColorBlendStateCreateInfo()
-                                                                .setAttachmentCount(static_cast<u32>(blendAttachmentState.size()))
-                                                                .setPAttachments(blendAttachmentState.data());
+    vk::PipelineColorBlendStateCreateInfo color_state = vk::PipelineColorBlendStateCreateInfo()
+                                                            .setAttachmentCount(static_cast<u32>(blend_attachments.size()))
+                                                            .setPAttachments(blend_attachments.data());
 
     // Viewport state
     vk::Viewport viewport(0, 0, static_cast<float>(this->swapchain->extent().width), static_cast<float>(this->swapchain->extent().height), 0, 1);
     vk::Rect2D scissor(vk::Offset2D(), this->swapchain->extent());
-    vk::PipelineViewportStateCreateInfo viewportState(vk::PipelineViewportStateCreateFlags(), 1, &viewport, 1, &scissor);
+    vk::PipelineViewportStateCreateInfo viewport_state(vk::PipelineViewportStateCreateFlags(), 1, &viewport, 1, &scissor);
 
     // Enable dynamic states
-    std::vector<vk::DynamicState> dynamicStateEnables;
-    dynamicStateEnables.push_back(vk::DynamicState::eViewport);
-    dynamicStateEnables.push_back(vk::DynamicState::eScissor);
+    std::vector<vk::DynamicState> dynamic_states;
+    dynamic_states.push_back(vk::DynamicState::eViewport);
+    dynamic_states.push_back(vk::DynamicState::eScissor);
 
-    vk::PipelineDynamicStateCreateInfo dynamicState(vk::PipelineDynamicStateCreateFlags(), static_cast<u32>(dynamicStateEnables.size()),
-                                                    dynamicStateEnables.data());
+    vk::PipelineDynamicStateCreateInfo dynamic_state(vk::PipelineDynamicStateCreateFlags(), static_cast<u32>(dynamic_states.size()),
+                                                     dynamic_states.data());
 
     // Depth and stencil state
-    vk::PipelineDepthStencilStateCreateInfo depthStencilState;
+    vk::PipelineDepthStencilStateCreateInfo depth_stencil_state;
 
     // Multi sampling state
-    vk::PipelineMultisampleStateCreateInfo multisampleState;
+    vk::PipelineMultisampleStateCreateInfo multisample_state;
 
     // Vertex input descriptions
     // Specifies the vertex input parameters for a pipeline
 
     // Vertex input binding
-    auto vertexInputBinding = TexturedVertex::BindingDescription();
+    auto vertex_input = TexturedVertex::BindingDescription();
 
     // Inpute attribute bindings
-    auto vertexInputAttributes = TexturedVertex::AttributeDescriptions();
+    auto vertex_attributes = TexturedVertex::AttributeDescriptions();
 
     // Vertex input state used for pipeline creation
-    vk::PipelineVertexInputStateCreateInfo vertexInputState(vk::PipelineVertexInputStateCreateFlags(), 1, &vertexInputBinding,
-                                                            static_cast<u32>(vertexInputAttributes.size()), vertexInputAttributes.data());
-
-    // Assign the pipeline states to the pipeline creation info structure
-    pipelineCreateInfo.setPVertexInputState(&vertexInputState)
-        .setPInputAssemblyState(&inputAssemblyState)
-        .setPRasterizationState(&rasterizationState)
-        .setPColorBlendState(&colorBlendState)
-        .setPMultisampleState(&multisampleState)
-        .setPViewportState(&viewportState)
-        .setPDepthStencilState(&depthStencilState)
-        .setRenderPass(this->render_pass)
-        .setPDynamicState(&dynamicState);
+    vk::PipelineVertexInputStateCreateInfo vertex_state(vk::PipelineVertexInputStateCreateFlags(), 1, &vertex_input,
+                                                        static_cast<u32>(vertex_attributes.size()), vertex_attributes.data());
 
     // Create rendering pipeline using the specified states
-    this->pipeline->pipelines = this->device->logical.createGraphicsPipelines(this->pipeline->cache, pipelineCreateInfo);
+    this->pipelines["main"] =
+        new ao::vulkan::GraphicsPipeline(this->device, pipeline_layout, this->render_pass, shader_stages, vertex_state, input_state, std::nullopt,
+                                         viewport_state, rasterization_state, multisample_state, depth_stencil_state, color_state, dynamic_state);
+
+    /* DESCRIPTOR POOL PART */
+
+    std::array<vk::DescriptorPoolSize, 2> poolSizes;
+    poolSizes[0] = vk::DescriptorPoolSize(vk::DescriptorType::eUniformBuffer, static_cast<u32>(this->swapchain->size()));
+    poolSizes[1] = vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler, static_cast<u32>(this->swapchain->size()));
+
+    this->pipelines["main"]->pools().push_back(std::move(ao::vulkan::DescriptorPool(
+        this->device, vk::DescriptorPoolCreateInfo(vk::DescriptorPoolCreateFlags(), static_cast<u32>(this->swapchain->size()),
+                                                   static_cast<u32>(poolSizes.size()), poolSizes.data()))));
 }
 
 void TexturedRectangle::createVulkanBuffers() {
@@ -209,10 +213,30 @@ void TexturedRectangle::createVulkanBuffers() {
         vk::SamplerCreateInfo(vk::SamplerCreateFlags(), vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eLinear,
                               vk::SamplerAddressMode::eRepeat, vk::SamplerAddressMode::eRepeat, vk::SamplerAddressMode::eRepeat, 0, VK_TRUE, 16,
                               VK_FALSE, vk::CompareOp::eAlways, 0, 0, vk::BorderColor::eFloatOpaqueBlack, VK_FALSE));
+
+    /* DESCRIPTOR SETS CREATION */
+
+    // Create vector of layouts
+    std::vector<vk::DescriptorSetLayout> layouts(this->swapchain->size(), this->pipelines["main"]->layout()->descriptorLayouts().front());
+
+    // Create sets
+    auto descriptor_sets = this->pipelines["main"]->pools().front().allocateDescriptorSets(static_cast<u32>(this->swapchain->size()), layouts);
+
+    // Configure
+    for (size_t i = 0; i < this->swapchain->size(); i++) {
+        vk::DescriptorBufferInfo bufferInfo(this->ubo_buffer->buffer(), this->ubo_buffer->offset(i), sizeof(UniformBufferObject));
+        this->device->logical.updateDescriptorSets(
+            vk::WriteDescriptorSet(descriptor_sets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &bufferInfo), {});
+
+        vk::DescriptorImageInfo sampleInfo(this->texture_sampler, std::get<2>(this->texture), vk::ImageLayout::eShaderReadOnlyOptimal);
+        this->device->logical.updateDescriptorSets(
+            vk::WriteDescriptorSet(descriptor_sets[i], 1, 0, 1, vk::DescriptorType::eCombinedImageSampler, &sampleInfo), {});
+    }
 }
 
 void TexturedRectangle::createSecondaryCommandBuffers() {
-    this->command_buffers = this->secondary_command_pool->allocateCommandBuffers(vk::CommandBufferLevel::eSecondary, this->swapchain->size());
+    this->command_buffers =
+        this->secondary_command_pool->allocateCommandBuffers(vk::CommandBufferLevel::eSecondary, static_cast<u32>(this->swapchain->size()));
 }
 
 void TexturedRectangle::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex,
@@ -232,12 +256,13 @@ void TexturedRectangle::executeSecondaryCommandBuffers(vk::CommandBufferInherita
         commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(), this->swapchain->extent()));
 
         // Bind pipeline
-        commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, this->pipeline->pipelines[0]);
+        commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, this->pipelines["main"]->value());
 
         // Draw rectangle
         commandBuffer.bindVertexBuffers(0, rectangle->buffer(), {0});
         commandBuffer.bindIndexBuffer(rectangle->buffer(), rectangle->offset(1), vk::IndexType::eUint16);
-        commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->pipeline->layouts[0], 0, this->descriptorSets[frameIndex], {});
+        commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->pipelines["main"]->layout()->value(), 0,
+                                         this->pipelines["main"]->pools().front().descriptorSets().at(frameIndex), {});
 
         commandBuffer.drawIndexed(static_cast<u32>(this->indices.size()), 1, 0, 0, 0);
     }
@@ -269,48 +294,4 @@ void TexturedRectangle::beforeCommandBuffersUpdate() {
 
     // Update buffer
     this->ubo_buffer->updateFragment(this->swapchain->currentFrameIndex(), &this->uniform_buffers[this->swapchain->currentFrameIndex()]);
-}
-
-void TexturedRectangle::createDescriptorSetLayouts() {
-    // Create bindings
-    std::array<vk::DescriptorSetLayoutBinding, 2> bindings;
-    bindings[0] = vk::DescriptorSetLayoutBinding(0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex);
-    bindings[1] = vk::DescriptorSetLayoutBinding(1, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment);
-
-    // Create info
-    vk::DescriptorSetLayoutCreateInfo createInfo(vk::DescriptorSetLayoutCreateFlags(), static_cast<u32>(bindings.size()), bindings.data());
-
-    // Create layouts
-    for (size_t i = 0; i < this->swapchain->size(); i++) {
-        this->descriptorSetLayouts.push_back(this->device->logical.createDescriptorSetLayout(createInfo));
-    }
-}
-
-void TexturedRectangle::createDescriptorPools() {
-    std::array<vk::DescriptorPoolSize, 2> poolSizes;
-    poolSizes[0] = vk::DescriptorPoolSize(vk::DescriptorType::eUniformBuffer, static_cast<u32>(this->swapchain->size()));
-    poolSizes[1] = vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler, static_cast<u32>(this->swapchain->size()));
-
-    // Create pool
-    this->descriptorPools.push_back(this->device->logical.createDescriptorPool(vk::DescriptorPoolCreateInfo(
-        vk::DescriptorPoolCreateFlags(), static_cast<u32>(this->swapchain->size()), static_cast<u32>(poolSizes.size()), poolSizes.data())));
-}
-
-void TexturedRectangle::createDescriptorSets() {
-    vk::DescriptorSetAllocateInfo allocateInfo(this->descriptorPools[0], static_cast<u32>(this->swapchain->size()),
-                                               this->descriptorSetLayouts.data());
-
-    // Create sets
-    this->descriptorSets = this->device->logical.allocateDescriptorSets(allocateInfo);
-
-    // Configure
-    for (size_t i = 0; i < this->swapchain->size(); i++) {
-        vk::DescriptorBufferInfo bufferInfo(this->ubo_buffer->buffer(), this->ubo_buffer->offset(i), sizeof(UniformBufferObject));
-        this->device->logical.updateDescriptorSets(
-            vk::WriteDescriptorSet(this->descriptorSets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &bufferInfo), {});
-
-        vk::DescriptorImageInfo sampleInfo(this->texture_sampler, std::get<2>(this->texture), vk::ImageLayout::eShaderReadOnlyOptimal);
-        this->device->logical.updateDescriptorSets(
-            vk::WriteDescriptorSet(this->descriptorSets[i], 1, 0, 1, vk::DescriptorType::eCombinedImageSampler, &sampleInfo), {});
-    }
 }
