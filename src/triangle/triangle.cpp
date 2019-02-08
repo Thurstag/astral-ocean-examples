@@ -4,7 +4,7 @@
 
 #include "triangle.h"
 
-#include <ao/vulkan/engine/wrapper/pipeline/graphics_pipeline.h>
+#include <ao/vulkan/wrapper/pipeline/graphics_pipeline.h>
 
 TriangleDemo::~TriangleDemo() {
     this->vertices_buffer.reset();
@@ -106,10 +106,19 @@ void TriangleDemo::createPipelines() {
     vk::PipelineVertexInputStateCreateInfo vertex_state(vk::PipelineVertexInputStateCreateFlags(), 1, &vertex_binding,
                                                         static_cast<u32>(vertex_attributes.size()), vertex_attributes.data());
 
+    // Cache create info
+    auto cache = ao::vulkan::GLFWEngine::LoadCache("data/triangle/caches/main.cache");
+    vk::PipelineCacheCreateInfo cache_info(vk::PipelineCacheCreateFlags(), cache.size(), cache.data());
+
     // Create rendering pipeline using the specified states
     this->pipelines["main"] = new ao::vulkan::GraphicsPipeline(
         this->device, std::make_shared<ao::vulkan::PipelineLayout>(this->device), this->render_pass, shader_stages, vertex_state, input_state,
-        std::nullopt, viewport_state, rasterization_state, multisample_state, depth_stencil_state, color_state, dynamic_state);
+        std::nullopt, viewport_state, rasterization_state, multisample_state, depth_stencil_state, color_state, dynamic_state, cache_info);
+
+    // Define callback
+    auto device = this->device;
+    this->pipelines.setBeforePipelineCacheDestruction(
+        [this, device](std::string name, vk::PipelineCache cache) { this->saveCache("data/triangle/caches", name + std::string(".cache"), cache); });
 }
 
 void TriangleDemo::createVulkanBuffers() {

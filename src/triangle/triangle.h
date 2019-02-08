@@ -9,9 +9,9 @@
 #include <algorithm>
 #include <vector>
 
-#include <ao/vulkan/engine/settings.h>
-#include <ao/vulkan/engine/wrapper/shader_module.h>
-#include <ao/vulkan/engine/wrapper/buffer/tuple/staging_buffer.hpp>
+#include <ao/vulkan/utilities/settings.h>
+#include <ao/vulkan/wrapper/shader_module.h>
+#include <ao/vulkan/wrapper/buffer/tuple/staging_buffer.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtx/rotate_vector.hpp>
 #include <glm/gtx/string_cast.hpp>

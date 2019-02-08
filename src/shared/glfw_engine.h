@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-#include <ao/vulkan/engine/engine.h>
+#include <ao/vulkan/engine.h>
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
@@ -25,7 +25,31 @@ namespace ao::vulkan {
         explicit GLFWEngine(std::shared_ptr<EngineSettings> settings);
         virtual ~GLFWEngine();
 
+        /**
+         * @brief Define callback on framebuffer resize
+         *
+         * @param window Window
+         * @param width Window's width
+         * @param height Window's height
+         */
         static void OnFramebufferSizeCallback(GLFWwindow* window, int width, int height);
+
+        /**
+         * @brief Load pipeline cache
+         *
+         * @param file File
+         * @return std::vector<u8> Data
+         */
+        static std::vector<u8> LoadCache(std::string const& file);
+
+        /**
+         * @brief Save pipeline cache
+         *
+         * @param directory Diretcory
+         * @param filename File's name
+         * @param cache Cache
+         */
+        void saveCache(std::string const& directory, std::string const& filename, vk::PipelineCache cache);
 
        protected:
         std::unique_ptr<CommandPool> secondary_command_pool;

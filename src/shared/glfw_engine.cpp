@@ -4,7 +4,10 @@
 
 #include "glfw_engine.h"
 
+#include <fstream>
+
 #include <fmt/format.h>
+#include <boost/filesystem.hpp>
 
 #include "metrics/counter_metric.hpp"
 #include "metrics/duration_metric.hpp"
@@ -19,6 +22,34 @@ ao::vulkan::GLFWEngine::~GLFWEngine() {
 
 void ao::vulkan::GLFWEngine::OnFramebufferSizeCallback(GLFWwindow* window, int width, int height) {
     static_cast<ao::vulkan::GLFWEngine*>(glfwGetWindowUserPointer(window))->enforce_resize = true;
+}
+
+std::vector<u8> ao::vulkan::GLFWEngine::LoadCache(std::string const& file) {
+    if (!boost::filesystem::exists("myfile.txt")) {
+        return {};
+    }
+
+    // Prepare copy
+    std::ifstream cache(file);
+    std::istream_iterator<u8> start(cache), end;
+
+    return std::vector<u8>(start, end);
+}
+
+void ao::vulkan::GLFWEngine::saveCache(std::string const& directory, std::string const& filename, vk::PipelineCache cache) {
+    if (!boost::filesystem::exists(directory)) {
+        boost::filesystem::create_directories(directory);
+    }
+
+    // Get pipeline cache
+    auto data = this->device->logical.getPipelineCacheData(cache);
+
+    // Create file
+    std::ofstream output_file(directory + std::string("/") + filename);
+
+    // Copy
+    std::ostream_iterator<u8> output_iterator(output_file);
+    std::copy(data.begin(), data.end(), output_iterator);
 }
 
 void ao::vulkan::GLFWEngine::initWindow() {
@@ -150,5 +181,12 @@ void ao::vulkan::GLFWEngine::updateCommandBuffers() {
 void ao::vulkan::GLFWEngine::afterFrame() {}
 
 std::vector<ao::vulkan::QueueRequest> ao::vulkan::GLFWEngine::requestQueues() const {
-    return {ao::vulkan::QueueRequest(vk::QueueFlagBits::eGraphics, 1), ao::vulkan::QueueRequest(vk::QueueFlagBits::eTransfer, 1)};
+    auto families = this->device->physical.getQueueFamilyProperties();
+
+    // Get indices
+    auto transfer_index = ao::vulkan::utilities::findQueueFamilyIndex(families, vk::QueueFlagBits::eTransfer);
+    auto graphics_index = ao::vulkan::utilities::findQueueFamilyIndex(families, vk::QueueFlagBits::eGraphics);
+
+    return {ao::vulkan::QueueRequest(vk::QueueFlagBits::eGraphics, 1, (families[graphics_index].queueCount - 1) / 2),
+            ao::vulkan::QueueRequest(vk::QueueFlagBits::eTransfer, 0, families[transfer_index].queueCount)};
 }

@@ -8,8 +8,8 @@
 #include <type_traits>
 
 #include <ao/core/utilities/pointers.h>
-#include <ao/vulkan/engine/wrapper/device.h>
 #include <ao/vulkan/utilities/vulkan.h>
+#include <ao/vulkan/wrapper/device.h>
 #include <vulkan/vulkan.hpp>
 
 #include "metric.h"
