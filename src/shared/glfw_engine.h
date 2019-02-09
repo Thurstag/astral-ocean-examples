@@ -56,6 +56,8 @@ namespace ao::vulkan {
         std::vector<vk::CommandBuffer> command_buffers;
         GLFWwindow* window;
 
+        std::unique_ptr<MetricModule> metrics;
+
         void initWindow() override;
         vk::SurfaceKHR createSurface() override;
         void freeWindow() override;
@@ -73,8 +75,5 @@ namespace ao::vulkan {
         virtual void afterFrame() override;
 
         virtual std::vector<ao::vulkan::QueueRequest> requestQueues() const override;
-
-       private:
-        std::unique_ptr<MetricModule> metrics;
     };
 }  // namespace ao::vulkan

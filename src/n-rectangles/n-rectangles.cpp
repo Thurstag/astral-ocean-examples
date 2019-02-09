@@ -9,6 +9,8 @@
 #include <ao/vulkan/wrapper/pipeline/graphics_pipeline.h>
 #include <boost/range/irange.hpp>
 
+#include "../shared/metrics/counter_metric.hpp"
+
 RectanglesDemo::~RectanglesDemo() {
     this->object_buffer.reset();
     this->ubo_buffer.reset();
@@ -260,8 +262,9 @@ void RectanglesDemo::beforeCommandBuffersUpdate() {
     // Update uniform buffers
     auto range = boost::irange<u64>(0, RECTANGLE_COUNT);
     std::for_each(std::execution::par_unseq, range.begin(), range.end(), [&](auto i) {
-        this->uniform_buffers[(i * this->swapchain->size()) + this->swapchain->currentFrameIndex()].model =
+        this->uniform_buffers[(i * this->swapchain->size()) + this->swapchain->currentFrameIndex()].rotation =
             glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(this->rotations[i].first), this->rotations[i].second);
+        this->uniform_buffers[(i * this->swapchain->size()) + this->swapchain->currentFrameIndex()].scale = (0.25f * glm::cos(deltaTime)) + 0.75f;
         this->uniform_buffers[(i * this->swapchain->size()) + this->swapchain->currentFrameIndex()].view =
             glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         this->uniform_buffers[(i * this->swapchain->size()) + this->swapchain->currentFrameIndex()].proj = glm::perspective(

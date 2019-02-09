@@ -241,7 +241,7 @@ void DepthRectangleDemo::beforeCommandBuffersUpdate() {
     float deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(std::chrono::system_clock::now() - this->clock).count();
 
     // Update uniform buffer
-    this->uniform_buffers[this->swapchain->currentFrameIndex()].model =
+    this->uniform_buffers[this->swapchain->currentFrameIndex()].rotation =
         glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
     this->uniform_buffers[this->swapchain->currentFrameIndex()].view =
         glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
