@@ -55,11 +55,18 @@ namespace ao::vulkan {
         void reset();
 
         /**
-         * @brief Query pool
+         * @brief Get timestamp query pool
          *
          * @return vk::QueryPool Query pool
          */
-        vk::QueryPool queryPool();
+        vk::QueryPool timestampQueryPool();
+
+        /**
+         * @brief Get triangle statistics query pool
+         *
+         * @return vk::QueryPool Query pool
+         */
+        vk::QueryPool triangleQueryPool();
 
         /**
          * @brief String representation
@@ -71,7 +78,8 @@ namespace ao::vulkan {
        private:
         std::unordered_map<std::string, Metric*> metrics;
 
-        vk::QueryPool _queryPool;
+        vk::QueryPool timestamp_query_pool;
+        vk::QueryPool triangle_query_pool;
         std::weak_ptr<Device> device;
     };
 }  // namespace ao::vulkan

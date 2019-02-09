@@ -107,20 +107,24 @@ void ao::vulkan::GLFWEngine::initVulkan() {
     // Init metric module (TODO: DrawCall per second)
     this->metrics = std::make_unique<ao::vulkan::MetricModule>(this->device);
     this->metrics->add("CPU", new ao::vulkan::BasicDurationMetric<std::chrono::duration<double, std::milli>>("ms"));
-    this->metrics->add("GPU", new ao::vulkan::CommandBufferMetric<std::milli>(
-                                  "ms", std::make_pair(std::weak_ptr<ao::vulkan::Device>(this->device), this->metrics->queryPool())));
-    this->metrics->add("FPS", new ao::vulkan::CounterMetric<std::chrono::seconds, int>(0));
+    this->metrics->add("GPU", new ao::vulkan::DurationCommandBufferMetric<std::milli>(
+                                  "ms", std::make_pair(std::weak_ptr<ao::vulkan::Device>(this->device), this->metrics->timestampQueryPool())));
+    this->metrics->add("Triangle/s", new ao::vulkan::CounterCommandBufferMetric<std::chrono::seconds, u64>(
+                                         0, std::make_pair(std::weak_ptr<ao::vulkan::Device>(this->device), this->metrics->triangleQueryPool())));
+    this->metrics->add("Frame/s", new ao::vulkan::CounterMetric<std::chrono::seconds, int>(0));
 }
 
 void ao::vulkan::GLFWEngine::render() {
     auto cpuFrame = static_cast<ao::vulkan::DurationMetric*>((*this->metrics)["CPU"]);
-    auto fps = static_cast<ao::vulkan::CounterMetric<std::chrono::seconds, int>*>((*this->metrics)["FPS"]);
+    auto fps = static_cast<ao::vulkan::CounterMetric<std::chrono::seconds, int>*>((*this->metrics)["Frame/s"]);
+    auto triangle_count = static_cast<ao::vulkan::CounterCommandBufferMetric<std::chrono::seconds, u64>*>((*this->metrics)["Triangle/s"]);
 
     // Render
     cpuFrame->start();
     ao::vulkan::Engine::render();
     cpuFrame->stop();
     fps->increment();
+    triangle_count->update();
 
     // Poll events after rendering
     glfwPollEvents();
@@ -163,18 +167,26 @@ void ao::vulkan::GLFWEngine::updateCommandBuffers() {
                                              static_cast<u32>(clearValues.size()), clearValues.data());
 
     command.begin(&begin_info);
-    command.resetQueryPool(this->metrics->queryPool(), 0, 2);
-    command.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, this->metrics->queryPool(), 0);
+
+    command.resetQueryPool(this->metrics->timestampQueryPool(), 0, 2);
+    command.resetQueryPool(this->metrics->triangleQueryPool(), 0, 4);
+
+    command.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, this->metrics->timestampQueryPool(), 0);
+    command.beginQuery(this->metrics->triangleQueryPool(), 0, vk::QueryControlFlags());
     command.beginRenderPass(render_pass_info, vk::SubpassContents::eSecondaryCommandBuffers);
     {
         // Create inheritance info for the secondary command buffers
         vk::CommandBufferInheritanceInfo inheritanceInfo(this->render_pass, 0, frame);
+        inheritanceInfo.setPipelineStatistics(vk::QueryPipelineStatisticFlagBits::eClippingInvocations);
 
         // Execute secondary command buffers
         this->executeSecondaryCommandBuffers(inheritanceInfo, this->swapchain->currentFrameIndex(), command);
     }
     command.endRenderPass();
-    command.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, this->metrics->queryPool(), 1);
+
+    command.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, this->metrics->timestampQueryPool(), 1);
+    command.endQuery(this->metrics->triangleQueryPool(), 0);
+
     command.end();
 }
 

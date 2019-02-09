@@ -24,6 +24,10 @@ struct TexturedVertex {
     glm::vec3 color;
     glm::vec2 texCoord;
 
+    bool operator==(const TexturedVertex& other) const {
+        return pos == other.pos && color == other.color && texCoord == other.texCoord;
+    }
+
     static vk::VertexInputBindingDescription BindingDescription() {
         return vk::VertexInputBindingDescription(0, sizeof(TexturedVertex), vk::VertexInputRate::eVertex);
     }

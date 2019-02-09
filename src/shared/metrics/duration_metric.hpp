@@ -95,31 +95,31 @@ namespace ao::vulkan {
     };
 
     /**
-     * @brief Command buffer metric
+     * @brief Duration metric for command buffer
      *
      * @tparam Period Period
      * @tparam Index Query index
      * @tparam Precision Precision
      */
     template<class Period, size_t Index = 0, size_t Precision = 4>
-    class CommandBufferMetric : public DurationMetric {
+    class DurationCommandBufferMetric : public DurationMetric {
        public:
         /**
-         * @brief Construct a new CommandBufferMetric object
+         * @brief Construct a new DurationCommandBufferMetric object
          *
          * @param unit
          * @param module
          */
-        CommandBufferMetric(std::string unit, std::pair<std::weak_ptr<ao::vulkan::Device>, vk::QueryPool> module)
+        DurationCommandBufferMetric(std::string unit, std::pair<std::weak_ptr<ao::vulkan::Device>, vk::QueryPool> module)
             : DurationMetric(unit), module(module) {
             this->period = ao::core::shared(this->module.first)->physical.getProperties().limits.timestampPeriod;
         };
 
         /**
-         * @brief Destroy the CommandBufferMetric object
+         * @brief Destroy the DurationCommandBufferMetric object
          *
          */
-        virtual ~CommandBufferMetric() = default;
+        virtual ~DurationCommandBufferMetric() = default;
 
         void start() override {}
 

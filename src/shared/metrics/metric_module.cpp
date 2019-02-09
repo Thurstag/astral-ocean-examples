@@ -11,7 +11,10 @@ ao::vulkan::MetricModule::MetricModule(std::weak_ptr<Device> device) : device(de
     auto _device = ao::core::shared(this->device);
 
     // Create query pool
-    this->_queryPool = _device->logical.createQueryPool(vk::QueryPoolCreateInfo(vk::QueryPoolCreateFlags(), vk::QueryType::eTimestamp, 128));
+    this->timestamp_query_pool =
+        _device->logical.createQueryPool(vk::QueryPoolCreateInfo(vk::QueryPoolCreateFlags(), vk::QueryType::eTimestamp, 128));
+    this->triangle_query_pool = _device->logical.createQueryPool(vk::QueryPoolCreateInfo(
+        vk::QueryPoolCreateFlags(), vk::QueryType::ePipelineStatistics, 4, vk::QueryPipelineStatisticFlagBits::eClippingInvocations));
 }
 
 ao::vulkan::MetricModule::~MetricModule() {
@@ -20,7 +23,8 @@ ao::vulkan::MetricModule::~MetricModule() {
     }
     this->metrics.clear();
 
-    ao::core::shared(this->device)->logical.destroyQueryPool(this->_queryPool);
+    ao::core::shared(this->device)->logical.destroyQueryPool(this->timestamp_query_pool);
+    ao::core::shared(this->device)->logical.destroyQueryPool(this->triangle_query_pool);
 }
 
 ao::vulkan::Metric* ao::vulkan::MetricModule::operator[](std::string name) {
@@ -43,8 +47,12 @@ void ao::vulkan::MetricModule::reset() {
     }
 }
 
-vk::QueryPool ao::vulkan::MetricModule::queryPool() {
-    return this->_queryPool;
+vk::QueryPool ao::vulkan::MetricModule::timestampQueryPool() {
+    return this->timestamp_query_pool;
+}
+
+vk::QueryPool ao::vulkan::MetricModule::triangleQueryPool() {
+    return this->triangle_query_pool;
 }
 
 std::string ao::vulkan::MetricModule::str() {

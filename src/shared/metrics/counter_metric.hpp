@@ -69,4 +69,45 @@ namespace ao::vulkan {
         Type count;
         Type old;
     };
+
+    /**
+     * @brief Counter metric for command buffer
+     *
+     * @tparam Period
+     * @tparam Type
+     */
+    template<class Period, class Type, size_t Index = 0>
+    class CounterCommandBufferMetric : public CounterMetric<Period, Type> {
+       public:
+        CounterCommandBufferMetric(Type default, std::pair<std::weak_ptr<ao::vulkan::Device>, vk::QueryPool> module)
+            : CounterMetric(default), module(module) {}
+
+        void increment() = delete;
+
+        void update() {
+            u64 result;
+
+            // Get results
+            ao::vulkan::utilities::vkAssert(ao::core::shared(this->module.first)
+                                                ->logical.getQueryPoolResults(this->module.second, Index, 1, sizeof(u64), &result, sizeof(u64),
+                                                                              vk::QueryResultFlagBits::e64 | vk::QueryResultFlagBits::eWait),
+                                            "Fail to get query results");
+
+            this->count += result;
+        }
+
+        std::string str() override {
+            if (this->old < 1000) {
+                return fmt::format("{0}", this->old);
+            }
+
+            auto suffixes = "KMGTPE";
+            double exp = std::log10(this->old) / std::log10(1000);
+
+            return fmt::format("{:.{}f}{}", this->old / std::pow(1000, exp), 2, suffixes[static_cast<int>(exp) - 1]);
+        }
+
+       private:
+        std::pair<std::weak_ptr<ao::vulkan::Device>, vk::QueryPool> module;
+    };
 }  // namespace ao::vulkan
