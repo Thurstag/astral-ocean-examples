@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <ao/core/utilities/types.h>
 #include <vulkan/vulkan.hpp>
 
 struct Vertex {
@@ -24,10 +25,6 @@ struct TexturedVertex {
     glm::vec3 color;
     glm::vec2 texCoord;
 
-    bool operator==(const TexturedVertex& other) const {
-        return pos == other.pos && color == other.color && texCoord == other.texCoord;
-    }
-
     static vk::VertexInputBindingDescription BindingDescription() {
         return vk::VertexInputBindingDescription(0, sizeof(TexturedVertex), vk::VertexInputRate::eVertex);
     }
@@ -40,4 +37,10 @@ struct TexturedVertex {
         attributes[2] = vk::VertexInputAttributeDescription(2, 0, vk::Format::eR32G32Sfloat, offsetof(TexturedVertex, texCoord));
         return attributes;
     }
+};
+
+struct MeshOptVertex {
+    float px, py, pz;
+    float nx, ny, nz;
+    float tx, ty;
 };

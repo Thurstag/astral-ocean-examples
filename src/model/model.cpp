@@ -8,19 +8,10 @@
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <ao/vulkan/wrapper/pipeline/graphics_pipeline.h>
+#include <meshoptimizer.h>
 #include <objparser.h>
 #include <stb_image.h>
 #include <boost/range/irange.hpp>
-#include <glm/gtx/hash.hpp>
-
-namespace std {
-    template<>
-    struct hash<TexturedVertex> {
-        size_t operator()(TexturedVertex const& vertex) const {
-            return ((hash<glm::vec3>()(vertex.pos) ^ (hash<glm::vec3>()(vertex.color) << 1)) >> 1) ^ (hash<glm::vec2>()(vertex.texCoord) << 1);
-        }
-    };
-}  // namespace std
 
 ModelDemo::~ModelDemo() {
     this->model_buffer.reset();
@@ -187,40 +178,61 @@ void ModelDemo::createVulkanBuffers() {
     ObjFile model;
 
     // Load
-    this->LOGGER << ao::core::Logger::Level::trace << "Start loading model";
+    this->LOGGER << ao::core::Logger::Level::trace << "=== Start loading model ===";
     if (!objParseFile(model, "assets/models/chalet.obj")) {
         throw ao::core::Exception("Error during model loading");
     }
-    if (!objValidate(model)) {
-        throw ao::core::Exception("Invalid model");
-    }
+    this->indices_count = static_cast<u32>(model.f_size / 3);
 
-    // Prepare vectors
-    this->vertices.reserve(model.f_size / 3);
-    this->indices.reserve(model.f_size / 3);
-
-    std::unordered_map<TexturedVertex, uint32_t> unique_vertices;
-
-    // Fill vectors
+    // Prepare vector
     this->LOGGER << ao::core::Logger::Level::trace << "Filling vectors with model's data";
-    for (size_t i = 0; i < model.f_size / 3; i++) {
-        auto pos_index = model.f[i * 3 + 0];
-        auto tex_index = model.f[i * 3 + 1];
-        auto normal_index = model.f[i * 3 + 2];
+    std::vector<MeshOptVertex> opt_vertices(this->indices_count);
 
-        TexturedVertex v = {{model.v[pos_index * 3 + 0], model.v[pos_index * 3 + 1], model.v[pos_index * 3 + 2]},
-                            {normal_index >= 0 ? model.vn[normal_index * 3 + 0] : 0, normal_index >= 0 ? model.vn[normal_index * 3 + 1] : 0,
-                             normal_index >= 0 ? model.vn[normal_index * 3 + 2] : 0},
-                            {tex_index >= 0 ? model.vt[tex_index * 3 + 0] : 0, 1.0f - (tex_index >= 0 ? model.vt[tex_index * 3 + 1] : 0)}};
+    // Build vertices vector
+    auto range = boost::irange<size_t>(0, this->indices_count);
+    std::for_each(std::execution::par_unseq, range.begin(), range.end(), [&model, &opt_vertices](auto i) {
+        int vi = model.f[i * 3 + 0];
+        int vti = model.f[i * 3 + 1];
+        int vni = model.f[i * 3 + 2];
 
-        if (unique_vertices.count(v) == 0) {
-            unique_vertices[v] = static_cast<uint32_t>(vertices.size());
-            this->vertices.push_back(v);
-        }
+        opt_vertices[i] = {
+            model.v[vi * 3 + 0],
+            model.v[vi * 3 + 1],
+            model.v[vi * 3 + 2],
 
-        this->indices.push_back(unique_vertices[v]);
-    }
-    this->indices_count = static_cast<u32>(this->indices.size());
+            vni >= 0 ? model.vn[vni * 3 + 0] : 0,
+            vni >= 0 ? model.vn[vni * 3 + 1] : 0,
+            vni >= 0 ? model.vn[vni * 3 + 2] : 0,
+
+            vti >= 0 ? model.vt[vti * 3 + 0] : 0,
+            1.0f - (vti >= 0 ? model.vt[vti * 3 + 1] : 0),
+        };
+    });
+
+    // Optimize mesh
+    this->LOGGER << ao::core::Logger::Level::trace << "Optimize mesh";
+    std::vector<u32> remap_indices(this->indices_count);
+    size_t vertices_count = meshopt_generateVertexRemap(remap_indices.data(), nullptr, this->indices_count, opt_vertices.data(), this->indices_count,
+                                                        sizeof(MeshOptVertex));
+
+    this->indices.resize(this->indices_count);
+    std::vector<MeshOptVertex> remap_vertices(vertices_count);
+
+    meshopt_remapVertexBuffer(remap_vertices.data(), opt_vertices.data(), this->indices_count, sizeof(MeshOptVertex), remap_indices.data());
+    meshopt_remapIndexBuffer(this->indices.data(), 0, this->indices_count, remap_indices.data());
+
+    meshopt_optimizeVertexCache(this->indices.data(), this->indices.data(), this->indices_count, vertices_count);
+    meshopt_optimizeVertexFetch(remap_vertices.data(), this->indices.data(), this->indices_count, remap_vertices.data(), vertices_count,
+                                sizeof(MeshOptVertex));
+
+    // Convert into TexturedVertex
+    this->vertices.resize(vertices_count);
+    range = boost::irange<size_t>(0, vertices_count);
+    std::for_each(std::execution::par_unseq, range.begin(), range.end(), [&remap_vertices, &vertices = this->vertices](auto i) {
+        vertices[i] = {
+            {remap_vertices[i].px, remap_vertices[i].py, remap_vertices[i].pz}, {1.0f, 1.0f, 1.0f}, {remap_vertices[i].tx, remap_vertices[i].ty}};
+    });
+
     this->LOGGER << ao::core::Logger::Level::trace << "=== Model loading end ===";
 
     // Create vertices & indices

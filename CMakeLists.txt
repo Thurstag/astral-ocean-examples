@@ -9,13 +9,14 @@ set(AO_EX_SUBMODULES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/submodules")
 
 # Define dependencies
 set(DEPENDENCIES GLM)
-set(SUBMODULES stb glfw astral-ocean objparser)
+set(SUBMODULES stb glfw astral-ocean objparser meshoptimizer)
 
 # Define include directories
 set(glfw_INCLUDE_DIR "${AO_EX_SUBMODULES_DIR}/glfw/include")
 set(stb_INCLUDE_DIR "${AO_EX_SUBMODULES_DIR}/stb")
 set(astral-ocean_INCLUDE_DIR "${AO_EX_SUBMODULES_DIR}/astral-ocean/include")
 set(objparser_INCLUDE_DIR "${AO_EX_SUBMODULES_DIR}/objparser")
+set(meshoptimizer_INCLUDE_DIR "${AO_EX_SUBMODULES_DIR}/meshoptimizer/src")
 
 # Disable tests for astral-ocean
 set(AO_BUILD_TESTS OFF CACHE BOOL "" FORCE)

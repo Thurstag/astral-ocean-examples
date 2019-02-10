@@ -10,3 +10,7 @@
 	path = submodules/astral-ocean
 	url = https://github.com/Thurstag/astral-ocean.git
 	ignore = dirty
+[submodule "submodules/meshoptimizer"]
+	path = submodules/meshoptimizer
+	url = https://github.com/zeux/meshoptimizer.git
+	ignore = dirty
