@@ -184,13 +184,14 @@ void ModelDemo::createVulkanBuffers() {
     }
     this->indices_count = static_cast<u32>(model.f_size / 3);
 
+    this->LOGGER << ao::core::Logger::Level::trace << fmt::format("Vertex count: {}", this->indices_count);
+
     // Prepare vector
     this->LOGGER << ao::core::Logger::Level::trace << "Filling vectors with model's data";
     std::vector<MeshOptVertex> opt_vertices(this->indices_count);
 
     // Build vertices vector
-    auto range = boost::irange<size_t>(0, this->indices_count);
-    std::for_each(std::execution::par_unseq, range.begin(), range.end(), [&model, &opt_vertices](auto i) {
+    for (size_t i = 0; i < this->indices_count; i++) {
         int vi = model.f[i * 3 + 0];
         int vti = model.f[i * 3 + 1];
         int vni = model.f[i * 3 + 2];
@@ -207,7 +208,7 @@ void ModelDemo::createVulkanBuffers() {
             vti >= 0 ? model.vt[vti * 3 + 0] : 0,
             1.0f - (vti >= 0 ? model.vt[vti * 3 + 1] : 0),
         };
-    });
+    }
 
     // Optimize mesh
     this->LOGGER << ao::core::Logger::Level::trace << "Optimize mesh";
@@ -225,30 +226,33 @@ void ModelDemo::createVulkanBuffers() {
     meshopt_optimizeVertexFetch(remap_vertices.data(), this->indices.data(), this->indices_count, remap_vertices.data(), vertices_count,
                                 sizeof(MeshOptVertex));
 
+    this->LOGGER << ao::core::Logger::Level::trace << fmt::format("Vertex count afer optimization: {}", vertices_count);
+
     // Convert into TexturedVertex
+    this->LOGGER << ao::core::Logger::Level::trace << "Convert MeshOptVertex -> TexturedVertex";
     this->vertices.resize(vertices_count);
-    range = boost::irange<size_t>(0, vertices_count);
-    std::for_each(std::execution::par_unseq, range.begin(), range.end(), [&remap_vertices, &vertices = this->vertices](auto i) {
+    for (size_t i = 0; i < vertices_count; i++) {
         vertices[i] = {
             {remap_vertices[i].px, remap_vertices[i].py, remap_vertices[i].pz}, {1.0f, 1.0f, 1.0f}, {remap_vertices[i].tx, remap_vertices[i].ty}};
-    });
+    }
 
     this->LOGGER << ao::core::Logger::Level::trace << "=== Model loading end ===";
 
     // Create vertices & indices
-    this->model_buffer = std::unique_ptr<ao::vulkan::TupleBuffer<TexturedVertex, u32>>(
-        (new ao::vulkan::StagingTupleBuffer<TexturedVertex, u32>(this->device, vk::CommandBufferUsageFlagBits::eOneTimeSubmit, true))
-            ->init({sizeof(TexturedVertex) * this->vertices.size(), sizeof(u32) * this->indices.size()})
-            ->update(this->vertices.data(), this->indices.data()));
+    this->model_buffer =
+        std::make_unique<ao::vulkan::StagingTupleBuffer<TexturedVertex, u32>>(this->device, vk::CommandBufferUsageFlagBits::eOneTimeSubmit, true);
+    this->model_buffer->init({sizeof(TexturedVertex) * this->vertices.size(), sizeof(u32) * this->indices.size()})
+        ->update(this->vertices.data(), this->indices.data());
+
+    this->model_buffer->freeHostBuffer();
 
     // Free vectors
     this->vertices.resize(0);
     this->indices.resize(0);
 
-    this->ubo_buffer = std::unique_ptr<ao::vulkan::DynamicArrayBuffer<UniformBufferObject>>(
-        (new ao::vulkan::BasicDynamicArrayBuffer<UniformBufferObject>(this->swapchain->size(), this->device))
-            ->init(vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, vk::MemoryPropertyFlagBits::eHostVisible,
-                   ao::vulkan::Buffer::CalculateUBOAligmentSize(this->device->physical, sizeof(UniformBufferObject))));
+    this->ubo_buffer = std::make_unique<ao::vulkan::BasicDynamicArrayBuffer<UniformBufferObject>>(this->swapchain->size(), this->device);
+    this->ubo_buffer->init(vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, vk::MemoryPropertyFlagBits::eHostVisible,
+                           ao::vulkan::Buffer::CalculateUBOAligmentSize(this->device->physical, sizeof(UniformBufferObject)));
 
     // Map buffer
     this->ubo_buffer->map();

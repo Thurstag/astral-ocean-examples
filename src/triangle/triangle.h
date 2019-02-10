@@ -28,8 +28,8 @@ class TriangleDemo : public virtual ao::vulkan::GLFWEngine {
     std::vector<Vertex> vertices;
     std::vector<u16> indices;
 
-    std::unique_ptr<ao::vulkan::TupleBuffer<Vertex>> vertices_buffer;
-    std::unique_ptr<ao::vulkan::TupleBuffer<u16>> indices_buffer;
+    std::unique_ptr<ao::vulkan::StagingTupleBuffer<Vertex>> vertices_buffer;
+    std::unique_ptr<ao::vulkan::StagingTupleBuffer<u16>> indices_buffer;
 
     explicit TriangleDemo(std::shared_ptr<ao::vulkan::EngineSettings> settings)
         : ao::vulkan::GLFWEngine(settings),

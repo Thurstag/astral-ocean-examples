@@ -164,15 +164,16 @@ void RectanglesDemo::createPipelines() {
 
 void RectanglesDemo::createVulkanBuffers() {
     // Create vertices & indices
-    this->object_buffer = std::unique_ptr<ao::vulkan::TupleBuffer<Vertex, u16>>(
-        (new ao::vulkan::StagingTupleBuffer<Vertex, u16>(this->device, vk::CommandBufferUsageFlagBits::eOneTimeSubmit))
-            ->init({sizeof(Vertex) * this->vertices.size(), sizeof(u16) * this->indices.size()})
-            ->update(this->vertices.data(), this->indices.data()));
+    this->object_buffer = std::make_unique<ao::vulkan::StagingTupleBuffer<Vertex, u16>>(this->device, vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+    this->object_buffer->init({sizeof(Vertex) * this->vertices.size(), sizeof(u16) * this->indices.size()})
+        ->update(this->vertices.data(), this->indices.data());
 
-    this->ubo_buffer = std::unique_ptr<ao::vulkan::DynamicArrayBuffer<UniformBufferObject>>(
-        (new ao::vulkan::BasicDynamicArrayBuffer<UniformBufferObject>(this->swapchain->size() * RECTANGLE_COUNT, this->device))
-            ->init(vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, vk::MemoryPropertyFlagBits::eHostVisible,
-                   ao::vulkan::Buffer::CalculateUBOAligmentSize(this->device->physical, sizeof(UniformBufferObject))));
+    this->object_buffer->freeHostBuffer();
+
+    this->ubo_buffer =
+        std::make_unique<ao::vulkan::BasicDynamicArrayBuffer<UniformBufferObject>>(this->swapchain->size() * RECTANGLE_COUNT, this->device);
+    this->ubo_buffer->init(vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, vk::MemoryPropertyFlagBits::eHostVisible,
+                           ao::vulkan::Buffer::CalculateUBOAligmentSize(this->device->physical, sizeof(UniformBufferObject)));
 
     // Map buffer
     this->ubo_buffer->map();

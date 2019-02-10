@@ -32,8 +32,8 @@ class ModelDemo : public virtual ao::vulkan::GLFWEngine {
     std::vector<u32> indices;
     u32 indices_count;
 
-    std::unique_ptr<ao::vulkan::DynamicArrayBuffer<UniformBufferObject>> ubo_buffer;
-    std::unique_ptr<ao::vulkan::TupleBuffer<TexturedVertex, u32>> model_buffer;
+    std::unique_ptr<ao::vulkan::BasicDynamicArrayBuffer<UniformBufferObject>> ubo_buffer;
+    std::unique_ptr<ao::vulkan::StagingTupleBuffer<TexturedVertex, u32>> model_buffer;
     std::tuple<vk::Image, vk::DeviceMemory, vk::ImageView> texture;
     vk::Sampler texture_sampler;
 

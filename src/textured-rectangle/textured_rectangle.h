@@ -31,8 +31,8 @@ class TexturedRectangle : public virtual ao::vulkan::GLFWEngine {
     std::vector<TexturedVertex> vertices;
     std::vector<u16> indices;
 
-    std::unique_ptr<ao::vulkan::DynamicArrayBuffer<UniformBufferObject>> ubo_buffer;
-    std::unique_ptr<ao::vulkan::TupleBuffer<TexturedVertex, u16>> model_buffer;
+    std::unique_ptr<ao::vulkan::BasicDynamicArrayBuffer<UniformBufferObject>> ubo_buffer;
+    std::unique_ptr<ao::vulkan::StagingTupleBuffer<TexturedVertex, u16>> model_buffer;
     std::tuple<vk::Image, vk::DeviceMemory, vk::ImageView> texture;
     vk::Sampler texture_sampler;
 

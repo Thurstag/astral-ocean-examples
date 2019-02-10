@@ -29,8 +29,8 @@ class RectangleDemo : public virtual ao::vulkan::GLFWEngine {
     std::vector<Vertex> vertices;
     std::vector<u16> indices;
 
-    std::unique_ptr<ao::vulkan::TupleBuffer<Vertex, u16>> model_buffer;
-    std::unique_ptr<ao::vulkan::DynamicArrayBuffer<UniformBufferObject>> ubo_buffer;
+    std::unique_ptr<ao::vulkan::StagingTupleBuffer<Vertex, u16>> model_buffer;
+    std::unique_ptr<ao::vulkan::BasicDynamicArrayBuffer<UniformBufferObject>> ubo_buffer;
 
     std::vector<UniformBufferObject> uniform_buffers;
 
