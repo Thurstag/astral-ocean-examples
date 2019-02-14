@@ -278,11 +278,7 @@ void MipmapDemo::createVulkanBuffers() {
         throw ao::core::Exception(fmt::format("Fail to load image: {0}", texture_file));
     }
     auto mip_levels = static_cast<u32>(texture_image.levels());
-
-    // Check format
-    if (texture_image.format() != gli::format::FORMAT_RGBA8_UNORM_PACK8) {
-        throw ao::core::Exception(fmt::format("Unsupported format: {}", texture_image.format()));
-    }
+    auto image_format = vk::Format(texture_image.format());  // Convert format
 
     // Create buffer
     auto textureBuffer = ao::vulkan::BasicTupleBuffer<pixel_t>(this->device);
@@ -292,9 +288,9 @@ void MipmapDemo::createVulkanBuffers() {
         ->update(static_cast<u8*>(texture_image.data()));
 
     // Create image
-    auto image = this->device->createImage(
-        texture_image.extent().x, texture_image.extent().y, mip_levels, vk::Format::eR8G8B8A8Unorm, vk::ImageType::e2D, vk::ImageTiling::eOptimal,
-        vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal);
+    auto image = this->device->createImage(texture_image.extent().x, texture_image.extent().y, mip_levels, image_format, vk::ImageType::e2D,
+                                           vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
+                                           vk::MemoryPropertyFlagBits::eDeviceLocal);
 
     // Assign
     std::get<0>(this->texture) = image.first;
@@ -313,16 +309,16 @@ void MipmapDemo::createVulkanBuffers() {
     }
 
     // Process image & copy into image
-    this->device->processImage(std::get<0>(this->texture), vk::Format::eR8G8B8A8Unorm,
+    this->device->processImage(std::get<0>(this->texture), image_format,
                                vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, mip_levels, 0, 1), vk::ImageLayout::eUndefined,
                                vk::ImageLayout::eTransferDstOptimal);
     this->device->copyBufferToImage(textureBuffer.buffer(), std::get<0>(this->texture), regions);
-    this->device->processImage(std::get<0>(this->texture), vk::Format::eR8G8B8A8Unorm,
+    this->device->processImage(std::get<0>(this->texture), image_format,
                                vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, mip_levels, 0, 1), vk::ImageLayout::eTransferDstOptimal,
                                vk::ImageLayout::eShaderReadOnlyOptimal);
 
     // Create view
-    std::get<2>(this->texture) = this->device->createImageView(std::get<0>(this->texture), vk::Format::eR8G8B8A8Unorm, vk::ImageViewType::e2D,
+    std::get<2>(this->texture) = this->device->createImageView(std::get<0>(this->texture), image_format, vk::ImageViewType::e2D,
                                                                vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, mip_levels, 0, 1));
 
     // Create sampler
