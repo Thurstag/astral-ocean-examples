@@ -11,9 +11,11 @@
 
 #include "../shared/metrics/counter_metric.hpp"
 
-RectanglesDemo::~RectanglesDemo() {
+void RectanglesDemo::freeVulkan() {
     this->object_buffer.reset();
     this->ubo_buffer.reset();
+
+    ao::vulkan::GLFWEngine::freeVulkan();
 }
 
 vk::RenderPass RectanglesDemo::createRenderPass() {

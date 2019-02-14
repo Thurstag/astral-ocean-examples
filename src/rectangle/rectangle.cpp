@@ -6,9 +6,11 @@
 
 #include <ao/vulkan/wrapper/pipeline/graphics_pipeline.h>
 
-RectangleDemo::~RectangleDemo() {
+void RectangleDemo::freeVulkan() {
     this->model_buffer.reset();
     this->ubo_buffer.reset();
+
+    ao::vulkan::GLFWEngine::freeVulkan();
 }
 
 vk::RenderPass RectangleDemo::createRenderPass() {

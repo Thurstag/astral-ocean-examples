@@ -14,18 +14,16 @@
 
 ao::vulkan::GLFWEngine::GLFWEngine(std::shared_ptr<EngineSettings> settings) : Engine(settings), window(nullptr) {}
 
-ao::vulkan::GLFWEngine::~GLFWEngine() {
-    this->freeWindow();
-
-    this->secondary_command_pool.reset();
-}
-
 void ao::vulkan::GLFWEngine::OnFramebufferSizeCallback(GLFWwindow* window, int width, int height) {
     static_cast<ao::vulkan::GLFWEngine*>(glfwGetWindowUserPointer(window))->enforce_resize = true;
 }
 
+void ao::vulkan::GLFWEngine::OnKeyEventCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+    static_cast<ao::vulkan::GLFWEngine*>(glfwGetWindowUserPointer(window))->key_states[key] = action;
+}
+
 std::vector<u8> ao::vulkan::GLFWEngine::LoadCache(std::string const& file) {
-    if (!boost::filesystem::exists("myfile.txt")) {
+    if (!boost::filesystem::exists(file)) {
         return {};
     }
 
@@ -68,9 +66,13 @@ void ao::vulkan::GLFWEngine::initWindow() {
     this->window = glfwCreateWindow(static_cast<int>(this->settings_->get<u64>(ao::vulkan::settings::WindowWidth)),
                                     static_cast<int>(this->settings_->get<u64>(ao::vulkan::settings::WindowHeight)),
                                     this->settings_->get<std::string>(ao::vulkan::settings::WindowTitle).c_str(), nullptr, nullptr);
-
     glfwSetWindowUserPointer(this->window, this);
+
+    // Define buffer resize callback
     glfwSetFramebufferSizeCallback(this->window, ao::vulkan::GLFWEngine::OnFramebufferSizeCallback);
+
+    // Define key callback
+    glfwSetKeyCallback(this->window, ao::vulkan::GLFWEngine::OnKeyEventCallback);
 }
 
 vk::SurfaceKHR ao::vulkan::GLFWEngine::createSurface() {
@@ -92,6 +94,12 @@ bool ao::vulkan::GLFWEngine::isIconified() const {
 void ao::vulkan::GLFWEngine::freeVulkan() {
     // Free module
     this->metrics.reset();
+
+    // Free window
+    this->freeWindow();
+
+    // Free command buffers
+    this->secondary_command_pool.reset();
 
     ao::vulkan::Engine::freeVulkan();
 }

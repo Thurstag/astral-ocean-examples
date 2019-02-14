@@ -40,8 +40,9 @@ class ModelDemo : public virtual ao::vulkan::GLFWEngine {
     std::vector<UniformBufferObject> uniform_buffers;
 
     explicit ModelDemo(std::shared_ptr<ao::vulkan::EngineSettings> settings) : ao::vulkan::GLFWEngine(settings), ao::vulkan::Engine(settings){};
-    virtual ~ModelDemo();
+    virtual ~ModelDemo() = default;
 
+    void freeVulkan() override;
     vk::RenderPass createRenderPass() override;
     void createPipelines() override;
     void createVulkanBuffers() override;

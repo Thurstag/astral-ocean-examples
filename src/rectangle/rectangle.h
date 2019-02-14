@@ -42,8 +42,9 @@ class RectangleDemo : public virtual ao::vulkan::GLFWEngine {
                     {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}},
                     {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}}}),
           indices({0, 1, 2, 2, 3, 0}){};
-    virtual ~RectangleDemo();
+    virtual ~RectangleDemo() = default;
 
+    void freeVulkan() override;
     vk::RenderPass createRenderPass() override;
     void createPipelines() override;
     void createVulkanBuffers() override;

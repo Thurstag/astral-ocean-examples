@@ -6,9 +6,11 @@
 
 #include <ao/vulkan/wrapper/pipeline/graphics_pipeline.h>
 
-TriangleDemo::~TriangleDemo() {
+void TriangleDemo::freeVulkan() {
     this->vertices_buffer.reset();
     this->indices_buffer.reset();
+
+    ao::vulkan::GLFWEngine::freeVulkan();
 }
 
 vk::RenderPass TriangleDemo::createRenderPass() {

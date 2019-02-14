@@ -14,3 +14,7 @@
 	path = submodules/meshoptimizer
 	url = https://github.com/zeux/meshoptimizer.git
 	ignore = dirty
+[submodule "submodules/gli"]
+	path = submodules/gli
+	url = https://github.com/g-truc/gli
+	ignore = dirty

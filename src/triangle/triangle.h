@@ -36,8 +36,9 @@ class TriangleDemo : public virtual ao::vulkan::GLFWEngine {
           ao::vulkan::Engine(settings),
           vertices({{{0.0f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}}, {{0.5f, 0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}}, {{-0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}}}),
           indices({0, 1, 2, 0}){};
-    virtual ~TriangleDemo();
+    virtual ~TriangleDemo() = default;
 
+    void freeVulkan() override;
     vk::RenderPass createRenderPass() override;
     void createPipelines() override;
     void createVulkanBuffers() override;

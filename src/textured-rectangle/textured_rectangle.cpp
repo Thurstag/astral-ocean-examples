@@ -8,7 +8,7 @@
 #include <ao/vulkan/wrapper/pipeline/graphics_pipeline.h>
 #include <stb_image.h>
 
-TexturedRectangle::~TexturedRectangle() {
+void TexturedRectangle::freeVulkan() {
     this->model_buffer.reset();
     this->ubo_buffer.reset();
 
@@ -17,6 +17,8 @@ TexturedRectangle::~TexturedRectangle() {
     this->device->logical.destroyImage(std::get<0>(this->texture));
     this->device->logical.destroyImageView(std::get<2>(this->texture));
     this->device->logical.freeMemory(std::get<1>(this->texture));
+
+    ao::vulkan::GLFWEngine::freeVulkan();
 }
 
 vk::RenderPass TexturedRectangle::createRenderPass() {
@@ -194,14 +196,12 @@ void TexturedRectangle::createVulkanBuffers() {
               vk::MemoryPropertyFlagBits::eHostCoherent | vk::MemoryPropertyFlagBits::eHostVisible, {texWidth * texHeight * 4 * sizeof(pixel_t)})
         ->update(pixels);
 
-    auto a = texWidth * texHeight * 4;
-
     // Free image
     stbi_image_free(pixels);
 
     // Create image
     auto image =
-        this->device->createImage(texWidth, texHeight, vk::Format::eR8G8B8A8Unorm, vk::ImageType::e2D, vk::ImageTiling::eOptimal,
+        this->device->createImage(texWidth, texHeight, 1, vk::Format::eR8G8B8A8Unorm, vk::ImageType::e2D, vk::ImageTiling::eOptimal,
                                   vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
     // Assign
@@ -209,15 +209,19 @@ void TexturedRectangle::createVulkanBuffers() {
     std::get<1>(this->texture) = image.second;
 
     // Process image & copy into image
-    this->device->processImage(std::get<0>(this->texture), vk::Format::eR8G8B8A8Unorm, vk::ImageLayout::eUndefined,
+    this->device->processImage(std::get<0>(this->texture), vk::Format::eR8G8B8A8Unorm,
+                               vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1), vk::ImageLayout::eUndefined,
                                vk::ImageLayout::eTransferDstOptimal);
-    this->device->copyBufferToImage(textureBuffer.buffer(), std::get<0>(this->texture), texWidth, texHeight);
-    this->device->processImage(std::get<0>(this->texture), vk::Format::eR8G8B8A8Unorm, vk::ImageLayout::eTransferDstOptimal,
+    this->device->copyBufferToImage(textureBuffer.buffer(), std::get<0>(this->texture),
+                                    vk::BufferImageCopy(0, 0, 0, vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1), vk::Offset3D(),
+                                                        vk::Extent3D(vk::Extent2D(texWidth, texHeight), 1)));
+    this->device->processImage(std::get<0>(this->texture), vk::Format::eR8G8B8A8Unorm,
+                               vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1), vk::ImageLayout::eTransferDstOptimal,
                                vk::ImageLayout::eShaderReadOnlyOptimal);
 
     // Create view
     std::get<2>(this->texture) = this->device->createImageView(std::get<0>(this->texture), vk::Format::eR8G8B8A8Unorm, vk::ImageViewType::e2D,
-                                                               vk::ImageAspectFlagBits::eColor);
+                                                               vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
 
     // Create sampler
     this->texture_sampler = this->device->logical.createSampler(

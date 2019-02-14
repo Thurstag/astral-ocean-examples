@@ -7,6 +7,12 @@
 #include <string>
 #include <vector>
 
+#ifdef __has_include
+#    if __has_include(<vld.h>)
+#        include <vld.h>
+#    endif
+#endif
+
 #include <ao/vulkan/engine.h>
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -23,7 +29,7 @@ namespace ao::vulkan {
     class GLFWEngine : public virtual Engine {
        public:
         explicit GLFWEngine(std::shared_ptr<EngineSettings> settings);
-        virtual ~GLFWEngine();
+        virtual ~GLFWEngine() = default;
 
         /**
          * @brief Define callback on framebuffer resize
@@ -33,6 +39,17 @@ namespace ao::vulkan {
          * @param height Window's height
          */
         static void OnFramebufferSizeCallback(GLFWwindow* window, int width, int height);
+
+        /**
+         * @brief Define callback on key event
+         *
+         * @param window Window
+         * @param key Key code
+         * @param scancode Scan code
+         * @param action Action
+         * @param mods Mods
+         */
+        static void OnKeyEventCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
 
         /**
          * @brief Load pipeline cache
@@ -57,6 +74,7 @@ namespace ao::vulkan {
         GLFWwindow* window;
 
         std::unique_ptr<MetricModule> metrics;
+        std::map<u64, u64> key_states;
 
         void initWindow() override;
         vk::SurfaceKHR createSurface() override;
