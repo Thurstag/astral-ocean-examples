@@ -15,6 +15,128 @@
 #include <boost/range/irange.hpp>
 #include <gli/gli.hpp>
 
+constexpr char const* MipMapKey = "mimap.enable";
+
+void MipmapDemo::setUpTexture() {
+    /* RESET PART */
+
+    if (this->texture_sampler) {
+        this->device->logical.destroySampler(this->texture_sampler);
+    }
+
+    if (std::get<0>(this->texture)) {
+        this->device->logical.destroyImage(std::get<0>(this->texture));
+    }
+    if (std::get<2>(this->texture)) {
+        this->device->logical.destroyImageView(std::get<2>(this->texture));
+    }
+    if (std::get<1>(this->texture)) {
+        this->device->logical.freeMemory(std::get<1>(this->texture));
+    }
+
+    /* TEXTURE CREATION */
+
+    // Load texture
+    char* texture_file = "assets/textures/chalet.ktx";
+    if (!boost::filesystem::exists(texture_file)) {
+        throw ao::core::Exception(fmt::format("{} doesn't exist", texture_file));
+    }
+    gli::texture2d texture_image(gli::load(texture_file));
+
+    // Check image
+    if (texture_image.empty()) {
+        throw ao::core::Exception(fmt::format("Fail to load image: {0}", texture_file));
+    }
+    auto mip_levels = this->settings_->get<bool>(MipMapKey, true) ? static_cast<u32>(texture_image.levels()) : 1;
+    auto image_format = vk::Format(texture_image.format());  // Convert format
+
+    // Create buffer
+    auto textureBuffer = ao::vulkan::BasicTupleBuffer<pixel_t>(this->device);
+    textureBuffer
+        .init(vk::BufferUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive,
+              vk::MemoryPropertyFlagBits::eHostCoherent | vk::MemoryPropertyFlagBits::eHostVisible,
+              {mip_levels == 1 ? texture_image[0].size() : texture_image.size()})
+        ->update(static_cast<u8*>(texture_image.data()));
+
+    // Create image
+    auto image = this->device->createImage(texture_image.extent().x, texture_image.extent().y, mip_levels, image_format, vk::ImageType::e2D,
+                                           vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
+                                           vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+    // Assign
+    std::get<0>(this->texture) = image.first;
+    std::get<1>(this->texture) = image.second;
+
+    // Create regions
+    std::vector<vk::BufferImageCopy> regions(mip_levels);
+    u32 region_offset = 0;
+    for (u32 i = 0; i < mip_levels; i++) {
+        regions[i]
+            .setBufferOffset(region_offset)
+            .setImageExtent(vk::Extent3D(texture_image[i].extent().x, texture_image[i].extent().y, 1))
+            .setImageSubresource(vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, static_cast<u32>(i), 0, 1));
+
+        region_offset += static_cast<u32>(texture_image[i].size());
+    }
+
+    // Process image & copy into image
+    this->device->processImage(std::get<0>(this->texture), image_format,
+                               vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, mip_levels, 0, 1), vk::ImageLayout::eUndefined,
+                               vk::ImageLayout::eTransferDstOptimal);
+    this->device->copyBufferToImage(textureBuffer.buffer(), std::get<0>(this->texture), regions);
+    this->device->processImage(std::get<0>(this->texture), image_format,
+                               vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, mip_levels, 0, 1), vk::ImageLayout::eTransferDstOptimal,
+                               vk::ImageLayout::eShaderReadOnlyOptimal);
+
+    // Create view
+    std::get<2>(this->texture) = this->device->createImageView(std::get<0>(this->texture), image_format, vk::ImageViewType::e2D,
+                                                               vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, mip_levels, 0, 1));
+
+    // Create sampler
+    this->texture_sampler = this->device->logical.createSampler(
+        vk::SamplerCreateInfo(vk::SamplerCreateFlags(), vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eLinear,
+                              vk::SamplerAddressMode::eRepeat, vk::SamplerAddressMode::eRepeat, vk::SamplerAddressMode::eRepeat, 0, VK_TRUE, 16,
+                              VK_FALSE, vk::CompareOp::eAlways, 0, static_cast<float>(mip_levels), vk::BorderColor::eFloatOpaqueBlack, VK_FALSE));
+
+    /* DESCRIPTOR SETS CREATION */
+
+    // Create vector of layouts
+    std::vector<vk::DescriptorSetLayout> layouts(this->swapchain->size(), this->pipelines["main"]->layout()->descriptorLayouts().front());
+
+    // Create sets
+    std::vector<vk::DescriptorSet> descriptor_sets;
+    if (this->pipelines["main"]->pools().front().descriptorSets().empty()) {
+        descriptor_sets = this->pipelines["main"]->pools().front().allocateDescriptorSets(static_cast<u32>(this->swapchain->size()), layouts);
+    } else {
+        descriptor_sets = this->pipelines["main"]->pools().front().descriptorSets();
+    }
+
+    // Configure
+    for (size_t i = 0; i < this->swapchain->size(); i++) {
+        vk::DescriptorBufferInfo bufferInfo(this->ubo_buffer->buffer(), this->ubo_buffer->offset(i), sizeof(UniformBufferObject));
+        this->device->logical.updateDescriptorSets(
+            vk::WriteDescriptorSet(descriptor_sets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &bufferInfo), {});
+
+        vk::DescriptorImageInfo sampleInfo(this->texture_sampler, std::get<2>(this->texture), vk::ImageLayout::eShaderReadOnlyOptimal);
+        this->device->logical.updateDescriptorSets(
+            vk::WriteDescriptorSet(descriptor_sets[i], 1, 0, 1, vk::DescriptorType::eCombinedImageSampler, &sampleInfo), {});
+    }
+}
+
+void MipmapDemo::onKeyEventCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+    ao::vulkan::GLFWEngine::onKeyEventCallback(window, key, scancode, action, mods);
+
+    if (key == GLFW_KEY_T && action == GLFW_PRESS) {
+        // Toggle mimap
+        this->settings_->get<bool>(MipMapKey) = !this->settings_->get<bool>(MipMapKey);
+
+        // Update texture
+        this->setUpTexture();
+
+        this->LOGGER << ao::core::Logger::Level::debug << fmt::format("Mimap mode: {}", this->settings_->get<bool>(MipMapKey) ? "On" : "Off");
+    }
+}
+
 void MipmapDemo::freeVulkan() {
     this->model_buffer.reset();
     this->ubo_buffer.reset();
@@ -264,87 +386,8 @@ void MipmapDemo::createVulkanBuffers() {
     // Resize uniform buffers vector
     this->uniform_buffers.resize(this->swapchain->size());
 
-    /* TEXTURE CREATION */
-
-    // Load texture
-    char* texture_file = "assets/textures/chalet.ktx";
-    if (!boost::filesystem::exists(texture_file)) {
-        throw ao::core::Exception(fmt::format("{} doesn't exist", texture_file));
-    }
-    gli::texture2d texture_image(gli::load(texture_file));
-
-    // Check image
-    if (texture_image.empty()) {
-        throw ao::core::Exception(fmt::format("Fail to load image: {0}", texture_file));
-    }
-    auto mip_levels = static_cast<u32>(texture_image.levels());
-    auto image_format = vk::Format(texture_image.format());  // Convert format
-
-    // Create buffer
-    auto textureBuffer = ao::vulkan::BasicTupleBuffer<pixel_t>(this->device);
-    textureBuffer
-        .init(vk::BufferUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive,
-              vk::MemoryPropertyFlagBits::eHostCoherent | vk::MemoryPropertyFlagBits::eHostVisible, {texture_image.size()})
-        ->update(static_cast<u8*>(texture_image.data()));
-
-    // Create image
-    auto image = this->device->createImage(texture_image.extent().x, texture_image.extent().y, mip_levels, image_format, vk::ImageType::e2D,
-                                           vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
-                                           vk::MemoryPropertyFlagBits::eDeviceLocal);
-
-    // Assign
-    std::get<0>(this->texture) = image.first;
-    std::get<1>(this->texture) = image.second;
-
-    // Create regions
-    std::vector<vk::BufferImageCopy> regions(mip_levels);
-    u32 region_offset = 0;
-    for (u32 i = 0; i < mip_levels; i++) {
-        regions[i]
-            .setBufferOffset(region_offset)
-            .setImageExtent(vk::Extent3D(texture_image[i].extent().x, texture_image[i].extent().y, 1))
-            .setImageSubresource(vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, static_cast<u32>(i), 0, 1));
-
-        region_offset += static_cast<u32>(texture_image[i].size());
-    }
-
-    // Process image & copy into image
-    this->device->processImage(std::get<0>(this->texture), image_format,
-                               vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, mip_levels, 0, 1), vk::ImageLayout::eUndefined,
-                               vk::ImageLayout::eTransferDstOptimal);
-    this->device->copyBufferToImage(textureBuffer.buffer(), std::get<0>(this->texture), regions);
-    this->device->processImage(std::get<0>(this->texture), image_format,
-                               vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, mip_levels, 0, 1), vk::ImageLayout::eTransferDstOptimal,
-                               vk::ImageLayout::eShaderReadOnlyOptimal);
-
-    // Create view
-    std::get<2>(this->texture) = this->device->createImageView(std::get<0>(this->texture), image_format, vk::ImageViewType::e2D,
-                                                               vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, mip_levels, 0, 1));
-
-    // Create sampler
-    this->texture_sampler = this->device->logical.createSampler(
-        vk::SamplerCreateInfo(vk::SamplerCreateFlags(), vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eLinear,
-                              vk::SamplerAddressMode::eRepeat, vk::SamplerAddressMode::eRepeat, vk::SamplerAddressMode::eRepeat, 0, VK_TRUE, 16,
-                              VK_FALSE, vk::CompareOp::eAlways, 0, static_cast<float>(mip_levels), vk::BorderColor::eFloatOpaqueBlack, VK_FALSE));
-
-    /* DESCRIPTOR SETS CREATION */
-
-    // Create vector of layouts
-    std::vector<vk::DescriptorSetLayout> layouts(this->swapchain->size(), this->pipelines["main"]->layout()->descriptorLayouts().front());
-
-    // Create sets
-    auto descriptor_sets = this->pipelines["main"]->pools().front().allocateDescriptorSets(static_cast<u32>(this->swapchain->size()), layouts);
-
-    // Configure
-    for (size_t i = 0; i < this->swapchain->size(); i++) {
-        vk::DescriptorBufferInfo bufferInfo(this->ubo_buffer->buffer(), this->ubo_buffer->offset(i), sizeof(UniformBufferObject));
-        this->device->logical.updateDescriptorSets(
-            vk::WriteDescriptorSet(descriptor_sets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &bufferInfo), {});
-
-        vk::DescriptorImageInfo sampleInfo(this->texture_sampler, std::get<2>(this->texture), vk::ImageLayout::eShaderReadOnlyOptimal);
-        this->device->logical.updateDescriptorSets(
-            vk::WriteDescriptorSet(descriptor_sets[i], 1, 0, 1, vk::DescriptorType::eCombinedImageSampler, &sampleInfo), {});
-    }
+    // Load texture...
+    this->setUpTexture();
 }
 
 void MipmapDemo::createSecondaryCommandBuffers() {
@@ -398,6 +441,8 @@ void MipmapDemo::beforeCommandBuffersUpdate() {
         return;
     }
 
+    /* CAMERA PART */
+
     // Constants
     constexpr float RotationTarget = 45.0f * boost::math::constants::pi<float>() / 180;
     float delta_time = std::chrono::duration<float, std::chrono::seconds::period>(std::chrono::system_clock::now() - this->clock).count();
@@ -405,33 +450,33 @@ void MipmapDemo::beforeCommandBuffersUpdate() {
     // Update camera
     float rotation = .0f;
     glm::vec3 angles = glm::vec3(.0f, .0f, 1.0f);
-    if (this->key_states[GLFW_KEY_LEFT] == GLFW_PRESS || this->key_states[GLFW_KEY_LEFT] == GLFW_REPEAT) {  // LEFT
+    if (this->key_states[GLFW_KEY_LEFT].second == GLFW_PRESS || this->key_states[GLFW_KEY_LEFT].second == GLFW_REPEAT) {  // LEFT
         rotation = -delta_time * RotationTarget;
         angles = glm::vec3(.0f, .0f, 1.0f);
 
         std::get<1>(this->camera) += rotation;
-    } else if (this->key_states[GLFW_KEY_RIGHT] == GLFW_PRESS || this->key_states[GLFW_KEY_RIGHT] == GLFW_REPEAT) {  // RIGHT
+    } else if (this->key_states[GLFW_KEY_RIGHT].second == GLFW_PRESS || this->key_states[GLFW_KEY_RIGHT].second == GLFW_REPEAT) {  // RIGHT
         rotation = delta_time * RotationTarget;
         angles = glm::vec3(.0f, .0f, 1.0f);
 
         std::get<1>(this->camera) += rotation;
-    } else if (this->key_states[GLFW_KEY_UP] == GLFW_PRESS || this->key_states[GLFW_KEY_UP] == GLFW_REPEAT) {  // UP
+    } else if (this->key_states[GLFW_KEY_UP].second == GLFW_PRESS || this->key_states[GLFW_KEY_UP].second == GLFW_REPEAT) {  // UP
         if ((std::get<2>(this->camera) - rotation) * (180 / glm::pi<float>()) > -50.f) {
             rotation = -delta_time * RotationTarget;
             angles = glm::vec3(glm::rotate(glm::mat4(1.0f), std::get<1>(this->camera), glm::vec3(.0f, .0f, 1.0f)) * glm::vec4(.0f, 1.0f, .0f, .0f));
 
             std::get<2>(this->camera) += rotation;
         }
-    } else if (this->key_states[GLFW_KEY_DOWN] == GLFW_PRESS || this->key_states[GLFW_KEY_DOWN] == GLFW_REPEAT) {  // DOWN
+    } else if (this->key_states[GLFW_KEY_DOWN].second == GLFW_PRESS || this->key_states[GLFW_KEY_DOWN].second == GLFW_REPEAT) {  // DOWN
         if ((std::get<2>(this->camera) + rotation) * (180 / glm::pi<float>()) < 50.f) {
             rotation = delta_time * RotationTarget;
             angles = glm::vec3(glm::rotate(glm::mat4(1.0f), std::get<1>(this->camera), glm::vec3(.0f, .0f, 1.0f)) * glm::vec4(.0f, 1.0f, .0f, .0f));
 
             std::get<2>(this->camera) += rotation;
         }
-    } else if (this->key_states[GLFW_KEY_PAGE_UP] == GLFW_PRESS || this->key_states[GLFW_KEY_PAGE_UP] == GLFW_REPEAT) {  // ZOOM IN
+    } else if (this->key_states[GLFW_KEY_PAGE_UP].second == GLFW_PRESS || this->key_states[GLFW_KEY_PAGE_UP].second == GLFW_REPEAT) {  // ZOOM IN
         std::get<3>(this->camera) = std::min(std::get<3>(this->camera) + .0005f, 1.0f);
-    } else if (this->key_states[GLFW_KEY_PAGE_DOWN] == GLFW_PRESS || this->key_states[GLFW_KEY_PAGE_DOWN] == GLFW_REPEAT) {  // ZOOM OUT
+    } else if (this->key_states[GLFW_KEY_PAGE_DOWN].second == GLFW_PRESS || this->key_states[GLFW_KEY_PAGE_DOWN].second == GLFW_REPEAT) {  // ZOOM OUT
         std::get<3>(this->camera) -= .0005f;
     }
     std::get<0>(this->camera) = glm::vec3(glm::rotate(glm::mat4(1.0f), rotation, angles) * glm::vec4(std::get<0>(this->camera), 0.0f));

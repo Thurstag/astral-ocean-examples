@@ -44,6 +44,13 @@ class MipmapDemo : public virtual ao::vulkan::GLFWEngine {
     explicit MipmapDemo(std::shared_ptr<ao::vulkan::EngineSettings> settings) : ao::vulkan::GLFWEngine(settings), ao::vulkan::Engine(settings){};
     virtual ~MipmapDemo() = default;
 
+    /**
+     * @brief Set-up texture stuff
+     *
+     */
+    void setUpTexture();
+
+    virtual void onKeyEventCallback(GLFWwindow* window, int key, int scancode, int action, int mods) override;
     void freeVulkan() override;
     vk::RenderPass createRenderPass() override;
     void createPipelines() override;

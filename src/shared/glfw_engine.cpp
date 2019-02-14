@@ -19,7 +19,12 @@ void ao::vulkan::GLFWEngine::OnFramebufferSizeCallback(GLFWwindow* window, int w
 }
 
 void ao::vulkan::GLFWEngine::OnKeyEventCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-    static_cast<ao::vulkan::GLFWEngine*>(glfwGetWindowUserPointer(window))->key_states[key] = action;
+    static_cast<ao::vulkan::GLFWEngine*>(glfwGetWindowUserPointer(window))->onKeyEventCallback(window, key, scancode, action, mods);
+}
+
+void ao::vulkan::GLFWEngine::onKeyEventCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+    this->key_states[key].first = this->key_states[key].second;
+    this->key_states[key].second = action;
 }
 
 std::vector<u8> ao::vulkan::GLFWEngine::LoadCache(std::string const& file) {

@@ -52,6 +52,17 @@ namespace ao::vulkan {
         static void OnKeyEventCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
 
         /**
+         * @brief Define callback on key event
+         *
+         * @param window Window
+         * @param key Key code
+         * @param scancode Scan code
+         * @param action Action
+         * @param mods Mods
+         */
+        virtual void onKeyEventCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
+
+        /**
          * @brief Load pipeline cache
          *
          * @param file File
@@ -74,7 +85,7 @@ namespace ao::vulkan {
         GLFWwindow* window;
 
         std::unique_ptr<MetricModule> metrics;
-        std::map<u64, u64> key_states;
+        std::map<u64, std::pair<u64, u64>> key_states;
 
         void initWindow() override;
         vk::SurfaceKHR createSurface() override;
