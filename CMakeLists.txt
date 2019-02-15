@@ -8,9 +8,9 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake")
 set(AO_EX_SUBMODULES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/submodules")
 
 # Define dependencies
-set(DEPENDENCIES GLM)
-set(SUBMODULES stb glfw astral-ocean objparser meshoptimizer gli)
-set(SUBMODULES_BUILD_EXCLUDE gli)
+set(DEPENDENCIES "")
+set(SUBMODULES stb glfw astral-ocean objparser meshoptimizer gli glm)
+set(SUBMODULES_BUILD_EXCLUDE gli glm)
 
 # Define include directories
 set(glfw_INCLUDE_DIR "${AO_EX_SUBMODULES_DIR}/glfw/include")
@@ -19,6 +19,7 @@ set(astral-ocean_INCLUDE_DIR "${AO_EX_SUBMODULES_DIR}/astral-ocean/include")
 set(objparser_INCLUDE_DIR "${AO_EX_SUBMODULES_DIR}/objparser")
 set(meshoptimizer_INCLUDE_DIR "${AO_EX_SUBMODULES_DIR}/meshoptimizer/src")
 set(gli_INCLUDE_DIR "${AO_EX_SUBMODULES_DIR}/gli/")
+set(glm_INCLUDE_DIR "${AO_EX_SUBMODULES_DIR}/glm/")
 
 # Disable tests for astral-ocean
 set(AO_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -77,7 +78,7 @@ foreach(SUBMODULE ${SUBMODULES})
 	
 	if(EXISTS "${AO_EX_SUBMODULES_DIR}/${SUBMODULE}/CMakeLists.txt" AND ${_index} EQUAL -1)
 		add_subdirectory("${AO_EX_SUBMODULES_DIR}/${SUBMODULE}")
-		message("Build ${SUBMODULE} submodule")
+		message("${SUBMODULE} submodule will be built")
 	endif()
 	if(EXISTS ${${SUBMODULE}_INCLUDE_DIR})
 		message("Include ${SUBMODULE} submodule")

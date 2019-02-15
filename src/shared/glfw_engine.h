@@ -7,9 +7,11 @@
 #include <string>
 #include <vector>
 
-#ifdef __has_include
-#    if __has_include(<vld.h>)
-#        include <vld.h>
+#if defined(_DEBUG) && defined(_WIN32)
+#    ifdef __has_include
+#        if __has_include(<vld.h>)
+#            include <vld.h>
+#        endif
 #    endif
 #endif
 
@@ -98,6 +100,7 @@ namespace ao::vulkan {
         bool loopingCondition() const override;
         void waitMaximized() override;
 
+        std::vector<vk::PhysicalDeviceFeatures> deviceFeatures() const override;
         std::vector<char const*> instanceExtensions() const override;
         void updateCommandBuffers() override;
 

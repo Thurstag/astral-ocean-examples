@@ -160,6 +160,14 @@ void ao::vulkan::GLFWEngine::waitMaximized() {
     glfwWaitEvents();
 }
 
+std::vector<vk::PhysicalDeviceFeatures> ao::vulkan::GLFWEngine::deviceFeatures() const {
+    auto features = vk::PhysicalDeviceFeatures();
+
+    features.setSamplerAnisotropy(VK_TRUE);
+
+    return {features};
+}
+
 std::vector<char const*> ao::vulkan::GLFWEngine::instanceExtensions() const {
     return ao::vulkan::utilities::extensions();
 }

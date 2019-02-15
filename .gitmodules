@@ -18,3 +18,7 @@
 	path = submodules/gli
 	url = https://github.com/g-truc/gli
 	ignore = dirty
+[submodule "submodules/glm"]
+	path = submodules/glm
+	url = https://github.com/g-truc/glm.git
+	ignore = dirty

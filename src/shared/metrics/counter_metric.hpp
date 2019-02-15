@@ -75,6 +75,7 @@ namespace ao::vulkan {
      *
      * @tparam Period
      * @tparam Type
+     * @tparam Index
      */
     template<class Period, class Type, size_t Index = 0>
     class CounterCommandBufferMetric : public CounterMetric<Period, Type> {
@@ -104,7 +105,7 @@ namespace ao::vulkan {
             auto suffixes = "KMGTPE";
             double exp = std::log10(this->old) / std::log10(1000);
 
-            return fmt::format("{:.{}f}{}", this->old / std::pow(1000, exp), 2, suffixes[static_cast<int>(exp) - 1]);
+            return fmt::format("{:.{}f}{}", this->old / std::pow(1000, static_cast<int>(exp)), 2, suffixes[static_cast<int>(exp) - 1]);
         }
 
        private:
