@@ -50,6 +50,8 @@ void MipmapDemo::setUpTexture() {
     auto mip_levels = this->settings_->get<bool>(MipMapKey, true) ? static_cast<u32>(texture_image.levels()) : 1;
     auto image_format = vk::Format(texture_image.format());  // Convert format
 
+    this->LOGGER << ao::core::Logger::Level::debug << fmt::format("Load texture with format: {}", vk::to_string(image_format));
+
     // Create buffer
     auto textureBuffer = ao::vulkan::BasicTupleBuffer<pixel_t>(this->device);
     textureBuffer

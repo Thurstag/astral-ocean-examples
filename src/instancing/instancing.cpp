@@ -2,23 +2,18 @@
 // Licensed under GPLv3 or any later version
 // Refer to the LICENSE.md file included.
 
-#include "n-rectangles.h"
-
-#include <execution>
+#include "instancing.h"
 
 #include <ao/vulkan/wrapper/pipeline/graphics_pipeline.h>
-#include <boost/range/irange.hpp>
 
-#include "../shared/metrics/counter_metric.hpp"
-
-void RectanglesDemo::freeVulkan() {
-    this->object_buffer.reset();
+void InstancingDemo::freeVulkan() {
+    this->model_buffer.reset();
     this->ubo_buffer.reset();
 
     ao::vulkan::GLFWEngine::freeVulkan();
 }
 
-vk::RenderPass RectanglesDemo::createRenderPass() {
+vk::RenderPass InstancingDemo::createRenderPass() {
     // Define attachments
     std::array<vk::AttachmentDescription, 2> attachments;
     attachments[0]
@@ -61,7 +56,7 @@ vk::RenderPass RectanglesDemo::createRenderPass() {
         vk::RenderPassCreateInfo(vk::RenderPassCreateFlags(), static_cast<u32>(attachments.size()), attachments.data(), 1, &subpass, 1, &dependency));
 }
 
-void RectanglesDemo::createPipelines() {
+void InstancingDemo::createPipelines() {
     /* PIPELINE LAYOUT PART */
 
     // Create bindings
@@ -82,8 +77,8 @@ void RectanglesDemo::createPipelines() {
 
     // Load shaders & get shaderStages
     std::vector<vk::PipelineShaderStageCreateInfo> shader_stages =
-        module.loadShader(vk::ShaderStageFlagBits::eVertex, "assets/shaders/rectangle/vert.spv")
-            .loadShader(vk::ShaderStageFlagBits::eFragment, "assets/shaders/rectangle/frag.spv")
+        module.loadShader(vk::ShaderStageFlagBits::eVertex, "assets/shaders/instancing/vert.spv")
+            .loadShader(vk::ShaderStageFlagBits::eFragment, "assets/shaders/instancing/frag.spv")
             .shaderStages();
 
     // Construct the differnent states making up the pipeline
@@ -140,7 +135,7 @@ void RectanglesDemo::createPipelines() {
                                                         static_cast<u32>(vertex_attributes.size()), vertex_attributes.data());
 
     // Cache create info
-    auto cache = ao::vulkan::GLFWEngine::LoadCache("data/n-rectangles/caches/main.cache");
+    auto cache = ao::vulkan::GLFWEngine::LoadCache("data/instancing/caches/main.cache");
     vk::PipelineCacheCreateInfo cache_info(vk::PipelineCacheCreateFlags(), cache.size(), cache.data());
 
     // Create rendering pipeline using the specified states
@@ -151,7 +146,7 @@ void RectanglesDemo::createPipelines() {
     // Define callback
     auto device = this->device;
     this->pipelines.setBeforePipelineCacheDestruction([this, device](std::string name, vk::PipelineCache cache) {
-        this->saveCache("data/n-rectangles/caches", name + std::string(".cache"), cache);
+        this->saveCache("data/instancing/caches", name + std::string(".cache"), cache);
     });
 
     /* DESCRIPTOR POOL PART */
@@ -160,101 +155,91 @@ void RectanglesDemo::createPipelines() {
     poolSizes[0] = vk::DescriptorPoolSize(vk::DescriptorType::eUniformBuffer, static_cast<u32>(this->swapchain->size()));
 
     this->pipelines["main"]->pools().push_back(ao::vulkan::DescriptorPool(
-        this->device, vk::DescriptorPoolCreateInfo(vk::DescriptorPoolCreateFlags(), static_cast<u32>(this->swapchain->size() * RECTANGLE_COUNT),
+        this->device, vk::DescriptorPoolCreateInfo(vk::DescriptorPoolCreateFlags(), static_cast<u32>(this->swapchain->size()),
                                                    static_cast<u32>(poolSizes.size()), poolSizes.data())));
 }
 
-void RectanglesDemo::createVulkanBuffers() {
+void InstancingDemo::createVulkanBuffers() {
     // Create vertices & indices
-    this->object_buffer = std::make_unique<ao::vulkan::StagingTupleBuffer<Vertex, u16>>(this->device, vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
-    this->object_buffer->init({sizeof(Vertex) * this->vertices.size(), sizeof(u16) * this->indices.size()})
+    this->model_buffer = std::make_unique<ao::vulkan::StagingTupleBuffer<Vertex, u16>>(this->device, vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+    this->model_buffer->init({sizeof(Vertex) * this->vertices.size(), sizeof(u16) * this->indices.size()})
         ->update(this->vertices.data(), this->indices.data());
 
-    this->object_buffer->freeHostBuffer();
+    this->model_buffer->freeHostBuffer();
 
-    this->ubo_buffer =
-        std::make_unique<ao::vulkan::BasicDynamicArrayBuffer<UniformBufferObject>>(this->swapchain->size() * RECTANGLE_COUNT, this->device);
+    this->ubo_buffer = std::make_unique<ao::vulkan::BasicDynamicArrayBuffer<InstanceUniformBufferObject>>(this->swapchain->size(), this->device);
     this->ubo_buffer->init(vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, vk::MemoryPropertyFlagBits::eHostVisible,
-                           ao::vulkan::Buffer::CalculateUBOAligmentSize(this->device->physical, sizeof(UniformBufferObject)));
+                           ao::vulkan::Buffer::CalculateUBOAligmentSize(this->device->physical, sizeof(InstanceUniformBufferObject)));
 
     // Map buffer
     this->ubo_buffer->map();
 
     // Resize uniform buffers vector
-    this->uniform_buffers.resize(this->swapchain->size() * RECTANGLE_COUNT);
+    this->uniform_buffers.resize(this->swapchain->size());
 
     /* DESCRIPTOR SETS CREATION */
 
     // Create vector of layouts
-    std::vector<vk::DescriptorSetLayout> layouts(this->swapchain->size() * RECTANGLE_COUNT,
-                                                 this->pipelines["main"]->layout()->descriptorLayouts().front());
+    std::vector<vk::DescriptorSetLayout> layouts(this->swapchain->size(), this->pipelines["main"]->layout()->descriptorLayouts().front());
 
     // Create sets
-    auto descriptor_sets =
-        this->pipelines["main"]->pools().front().allocateDescriptorSets(static_cast<u32>(this->swapchain->size() * RECTANGLE_COUNT), layouts);
+    auto descriptor_sets = this->pipelines["main"]->pools().front().allocateDescriptorSets(static_cast<u32>(this->swapchain->size()), layouts);
 
     // Configure
-    for (size_t i = 0; i < this->swapchain->size() * RECTANGLE_COUNT; i++) {
-        vk::DescriptorBufferInfo bufferInfo(this->ubo_buffer->buffer(), this->ubo_buffer->offset(i), sizeof(UniformBufferObject));
+    for (size_t i = 0; i < this->swapchain->size(); i++) {
+        vk::DescriptorBufferInfo bufferInfo(this->ubo_buffer->buffer(), this->ubo_buffer->offset(i), sizeof(InstanceUniformBufferObject));
         this->device->logical.updateDescriptorSets(
             vk::WriteDescriptorSet(descriptor_sets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &bufferInfo), {});
     }
 }
 
-void RectanglesDemo::createSecondaryCommandBuffers() {
-    this->command_buffers = this->secondary_command_pool->allocateCommandBuffers(vk::CommandBufferLevel::eSecondary,
-                                                                                 static_cast<u32>(RECTANGLE_COUNT * this->swapchain->size()));
+void InstancingDemo::createSecondaryCommandBuffers() {
+    this->command_buffers =
+        this->secondary_command_pool->allocateCommandBuffers(vk::CommandBufferLevel::eSecondary, static_cast<u32>(this->swapchain->size()));
 }
 
-void RectanglesDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex, vk::CommandBuffer primaryCmd) {
+void InstancingDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex, vk::CommandBuffer primaryCmd) {
     // Create info
     vk::CommandBufferBeginInfo beginInfo =
         vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eRenderPassContinue).setPInheritanceInfo(&inheritanceInfo);
+    ao::vulkan::TupleBuffer<Vertex, u16>* rectangle = this->model_buffer.get();
 
-    // Draw in commands
-    auto range = boost::irange<u64>(0, RECTANGLE_COUNT);
-    std::for_each(std::execution::par_unseq, range.begin(), range.end(), [&](auto i) {
-        auto commandBuffer = this->command_buffers[(i * this->swapchain->size()) + frameIndex];
+    // Draw in command
+    auto& commandBuffer = this->command_buffers[frameIndex];
+    commandBuffer.begin(beginInfo);
+    {
+        // Set viewport & scissor
+        commandBuffer.setViewport(
+            0, vk::Viewport(0, 0, static_cast<float>(this->swapchain->extent().width), static_cast<float>(this->swapchain->extent().height), 0, 1));
+        commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(), this->swapchain->extent()));
 
-        commandBuffer.begin(beginInfo);
-        {
-            // Set viewport & scissor
-            commandBuffer.setViewport(0, vk::Viewport(0, 0, static_cast<float>(this->swapchain->extent().width),
-                                                      static_cast<float>(this->swapchain->extent().height), 0, 1));
-            commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(), this->swapchain->extent()));
+        // Bind pipeline
+        commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, this->pipelines["main"]->value());
 
-            // Bind pipeline
-            commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, this->pipelines["main"]->value());
+        // Draw rectangle
+        commandBuffer.bindVertexBuffers(0, rectangle->buffer(), {0});
+        commandBuffer.bindIndexBuffer(rectangle->buffer(), rectangle->offset(1), vk::IndexType::eUint16);
+        commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->pipelines["main"]->layout()->value(), 0,
+                                         this->pipelines["main"]->pools().front().descriptorSets().at(frameIndex), {});
 
-            // Draw rectangle
-            commandBuffer.bindVertexBuffers(0, this->object_buffer->buffer(), {0});
-            commandBuffer.bindIndexBuffer(this->object_buffer->buffer(), this->object_buffer->offset(1), vk::IndexType::eUint16);
-            commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->pipelines["main"]->layout()->value(), 0,
-                                             this->pipelines["main"]->pools().front().descriptorSets()[(i * this->swapchain->size()) + frameIndex],
-                                             {});
-
-            commandBuffer.drawIndexed(static_cast<u32>(this->indices.size()), 1, 0, 0, 0);
-        }
-        commandBuffer.end();
-
-        // Pass to primary
-        sub_commands[i] = commandBuffer;
-    });
+        commandBuffer.drawIndexed(static_cast<u32>(this->indices.size()), INSTANCE_COUNT, 0, 0, 0);
+    }
+    commandBuffer.end();
 
     // Pass to primary
-    primaryCmd.executeCommands(sub_commands);
+    primaryCmd.executeCommands(commandBuffer);
 }
 
-void RectanglesDemo::beforeCommandBuffersUpdate() {
+void InstancingDemo::beforeCommandBuffersUpdate() {
     if (!this->clock_start) {
         this->clock = std::chrono::system_clock::now();
         this->clock_start = true;
 
         // Generate vector of rotations
         std::srand(std::time(nullptr));
-        this->rotations.resize(RECTANGLE_COUNT);
-        for (size_t i = 0; i < RECTANGLE_COUNT; i++) {
-            this->rotations[i] = std::make_pair(static_cast<float>((std::rand() % (180 - 10)) + 10), glm::vec3(0.f, 1.0f, 1.0f));
+        this->rotations.resize(INSTANCE_COUNT);
+        for (size_t i = 0; i < INSTANCE_COUNT; i++) {
+            this->rotations[i] = static_cast<float>((std::rand() % (180 - 10)) + 10);
         }
 
         return;
@@ -263,20 +248,19 @@ void RectanglesDemo::beforeCommandBuffersUpdate() {
     // Delta time
     float deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(std::chrono::system_clock::now() - this->clock).count();
 
-    // Update uniform buffers
-    auto range = boost::irange<u64>(0, RECTANGLE_COUNT);
-    std::for_each(std::execution::par_unseq, range.begin(), range.end(), [&](auto i) {
-        this->uniform_buffers[(i * this->swapchain->size()) + this->swapchain->currentFrameIndex()].rotation =
-            glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(this->rotations[i].first), this->rotations[i].second);
-        this->uniform_buffers[(i * this->swapchain->size()) + this->swapchain->currentFrameIndex()].scale = (0.25f * glm::cos(deltaTime)) + 0.75f;
-        this->uniform_buffers[(i * this->swapchain->size()) + this->swapchain->currentFrameIndex()].view =
-            glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        this->uniform_buffers[(i * this->swapchain->size()) + this->swapchain->currentFrameIndex()].proj = glm::perspective(
-            glm::radians(45.0f), this->swapchain->extent().width / static_cast<float>(this->swapchain->extent().height), 0.1f, 10.0f);
-        this->uniform_buffers[(i * this->swapchain->size()) + this->swapchain->currentFrameIndex()].proj[1][1] *= -1;  // Adapt for vulkan
+    // Update uniform buffer
+    for (size_t i = 0; i < INSTANCE_COUNT; i++) {
+        this->uniform_buffers[this->swapchain->currentFrameIndex()].instances[i].rotation =
+            glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(this->rotations[i]), glm::vec3(.0f, 1.0f, 1.0f));
+        this->uniform_buffers[this->swapchain->currentFrameIndex()].instances[i].scale = (0.25f * glm::cos(deltaTime)) + 0.75f;
+    }
 
-        // Update buffer
-        this->ubo_buffer->updateFragment((i * this->swapchain->size()) + this->swapchain->currentFrameIndex(),
-                                         &this->uniform_buffers[(i * this->swapchain->size()) + this->swapchain->currentFrameIndex()]);
-    });
+    this->uniform_buffers[this->swapchain->currentFrameIndex()].view =
+        glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(.0f, .0f, 1.0f));
+    this->uniform_buffers[this->swapchain->currentFrameIndex()].proj =
+        glm::perspective(glm::radians(45.0f), this->swapchain->extent().width / (float)this->swapchain->extent().height, 0.1f, 10.0f);
+    this->uniform_buffers[this->swapchain->currentFrameIndex()].proj[1][1] *= -1;  // Adapt for vulkan
+
+    // Update buffer
+    this->ubo_buffer->updateFragment(this->swapchain->currentFrameIndex(), &this->uniform_buffers[this->swapchain->currentFrameIndex()]);
 }
