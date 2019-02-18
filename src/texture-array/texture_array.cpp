@@ -2,18 +2,13 @@
 // Licensed under GPLv3 or any later version
 // Refer to the LICENSE.md file included.
 
-#include "model.h"
+#include "texture_array.h"
 
-#include <execution>
-
-#define STB_IMAGE_IMPLEMENTATION
 #include <ao/vulkan/wrapper/pipeline/graphics_pipeline.h>
-#include <meshoptimizer.h>
-#include <objparser.h>
-#include <stb_image.h>
-#include <boost/range/irange.hpp>
+#include <boost/filesystem.hpp>
+#include <gli/gli.hpp>
 
-void ModelDemo::freeVulkan() {
+void TextureArrayDemo::freeVulkan() {
     this->model_buffer.reset();
     this->ubo_buffer.reset();
 
@@ -26,7 +21,7 @@ void ModelDemo::freeVulkan() {
     ao::vulkan::GLFWEngine::freeVulkan();
 }
 
-vk::RenderPass ModelDemo::createRenderPass() {
+vk::RenderPass TextureArrayDemo::createRenderPass() {
     // Define attachments
     std::array<vk::AttachmentDescription, 2> attachments;
     attachments[0]
@@ -69,7 +64,7 @@ vk::RenderPass ModelDemo::createRenderPass() {
         vk::RenderPassCreateInfo(vk::RenderPassCreateFlags(), static_cast<u32>(attachments.size()), attachments.data(), 1, &subpass, 1, &dependency));
 }
 
-void ModelDemo::createPipelines() {
+void TextureArrayDemo::createPipelines() {
     /* PIPELINE LAYOUT PART */
 
     // Create bindings
@@ -91,8 +86,8 @@ void ModelDemo::createPipelines() {
 
     // Load shaders & get shaderStages
     std::vector<vk::PipelineShaderStageCreateInfo> shader_stages =
-        module.loadShader(vk::ShaderStageFlagBits::eVertex, "assets/shaders/model/vert.spv")
-            .loadShader(vk::ShaderStageFlagBits::eFragment, "assets/shaders/model/frag.spv")
+        module.loadShader(vk::ShaderStageFlagBits::eVertex, "assets/shaders/texture-array/vert.spv")
+            .loadShader(vk::ShaderStageFlagBits::eFragment, "assets/shaders/texture-array/frag.spv")
             .shaderStages();
 
     // Construct the differnent states making up the pipeline
@@ -150,7 +145,7 @@ void ModelDemo::createPipelines() {
                                                         static_cast<u32>(vertex_attributes.size()), vertex_attributes.data());
 
     // Cache create info
-    auto cache = ao::vulkan::GLFWEngine::LoadCache("data/model/caches/main.cache");
+    auto cache = ao::vulkan::GLFWEngine::LoadCache("data/texture-array/caches/main.cache");
     vk::PipelineCacheCreateInfo cache_info(vk::PipelineCacheCreateFlags(), cache.size(), cache.data());
 
     // Create rendering pipeline using the specified states
@@ -160,8 +155,9 @@ void ModelDemo::createPipelines() {
 
     // Define callback
     auto device = this->device;
-    this->pipelines.setBeforePipelineCacheDestruction(
-        [this, device](std::string name, vk::PipelineCache cache) { this->saveCache("data/model/caches", name + std::string(".cache"), cache); });
+    this->pipelines.setBeforePipelineCacheDestruction([this, device](std::string name, vk::PipelineCache cache) {
+        this->saveCache("data/texture-array/caches", name + std::string(".cache"), cache);
+    });
 
     /* DESCRIPTOR POOL PART */
 
@@ -174,89 +170,20 @@ void ModelDemo::createPipelines() {
                                                    static_cast<u32>(poolSizes.size()), poolSizes.data()))));
 }
 
-void ModelDemo::createVulkanBuffers() {
-    /* LOAD MODEL */
-
-    ObjFile model;
-
-    // Load
-    this->LOGGER << ao::core::Logger::Level::trace << "=== Start loading model ===";
-    if (!objParseFile(model, "assets/models/chalet.obj")) {
-        throw ao::core::Exception("Error during model loading");
-    }
-    this->indices_count = static_cast<u32>(model.f_size / 3);
-
-    this->LOGGER << ao::core::Logger::Level::trace << fmt::format("Vertex count: {}", this->indices_count);
-
-    // Prepare vector
-    this->LOGGER << ao::core::Logger::Level::trace << "Filling vectors with model's data";
-    std::vector<MeshOptVertex> opt_vertices(this->indices_count);
-
-    // Build vertices vector
-    for (size_t i = 0; i < this->indices_count; i++) {
-        int vi = model.f[i * 3 + 0];
-        int vti = model.f[i * 3 + 1];
-        int vni = model.f[i * 3 + 2];
-
-        opt_vertices[i] = {
-            model.v[vi * 3 + 0],
-            model.v[vi * 3 + 1],
-            model.v[vi * 3 + 2],
-
-            vni >= 0 ? model.vn[vni * 3 + 0] : 0,
-            vni >= 0 ? model.vn[vni * 3 + 1] : 0,
-            vni >= 0 ? model.vn[vni * 3 + 2] : 0,
-
-            vti >= 0 ? model.vt[vti * 3 + 0] : 0,
-            1.0f - (vti >= 0 ? model.vt[vti * 3 + 1] : 0),
-        };
-    }
-
-    // Optimize mesh
-    this->LOGGER << ao::core::Logger::Level::trace << "Optimize mesh";
-    std::vector<u32> remap_indices(this->indices_count);
-    size_t vertices_count = meshopt_generateVertexRemap(remap_indices.data(), nullptr, this->indices_count, opt_vertices.data(), this->indices_count,
-                                                        sizeof(MeshOptVertex));
-
-    this->indices.resize(this->indices_count);
-    std::vector<MeshOptVertex> remap_vertices(vertices_count);
-
-    meshopt_remapVertexBuffer(remap_vertices.data(), opt_vertices.data(), this->indices_count, sizeof(MeshOptVertex), remap_indices.data());
-    meshopt_remapIndexBuffer(this->indices.data(), 0, this->indices_count, remap_indices.data());
-
-    meshopt_optimizeVertexCache(this->indices.data(), this->indices.data(), this->indices_count, vertices_count);
-    meshopt_optimizeVertexFetch(remap_vertices.data(), this->indices.data(), this->indices_count, remap_vertices.data(), vertices_count,
-                                sizeof(MeshOptVertex));
-
-    this->LOGGER << ao::core::Logger::Level::trace << fmt::format("Vertex count afer optimization: {}", vertices_count);
-
-    // Convert into TexturedVertex
-    this->LOGGER << ao::core::Logger::Level::trace << "Convert MeshOptVertex -> TexturedVertex";
-    this->vertices.resize(vertices_count);
-    for (size_t i = 0; i < vertices_count; i++) {
-        vertices[i] = {{remap_vertices[i].px, remap_vertices[i].py, remap_vertices[i].pz}, {remap_vertices[i].tx, remap_vertices[i].ty}};
-    }
-
-    this->LOGGER << ao::core::Logger::Level::trace << "=== Model loading end ===";
-
+void TextureArrayDemo::createVulkanBuffers() {
     // Create vertices & indices
     this->model_buffer =
-        std::make_unique<ao::vulkan::StagingTupleBuffer<TexturedVertex, u32>>(this->device, vk::CommandBufferUsageFlagBits::eOneTimeSubmit, true);
-    this->model_buffer->init({sizeof(TexturedVertex) * this->vertices.size(), sizeof(u32) * this->indices.size()})
+        std::make_unique<ao::vulkan::StagingTupleBuffer<TexturedVertex, u16>>(this->device, vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+    this->model_buffer->init({sizeof(TexturedVertex) * this->vertices.size(), sizeof(u16) * this->indices.size()})
         ->update(this->vertices.data(), this->indices.data());
 
     this->model_buffer->freeHostBuffer();
 
-    // Free vectors
-    this->vertices.resize(0);
-    this->indices.resize(0);
-
-    this->ubo_buffer = std::make_unique<ao::vulkan::BasicDynamicArrayBuffer<UniformBufferObject>>(this->swapchain->size(), this->device);
-    this->ubo_buffer->init(vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, vk::MemoryPropertyFlagBits::eHostVisible,
-                           ao::vulkan::Buffer::CalculateUBOAligmentSize(this->device->physical, sizeof(UniformBufferObject)));
-
-    // Map buffer
-    this->ubo_buffer->map();
+    this->ubo_buffer = std::make_unique<ao::vulkan::BasicDynamicArrayBuffer<UBO>>(this->swapchain->size(), this->device);
+    this->ubo_buffer
+        ->init(vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, vk::MemoryPropertyFlagBits::eHostVisible,
+               ao::vulkan::Buffer::CalculateUBOAligmentSize(this->device->physical, sizeof(UBO)))
+        ->map();
 
     // Resize uniform buffers vector
     this->uniform_buffers.resize(this->swapchain->size());
@@ -264,54 +191,65 @@ void ModelDemo::createVulkanBuffers() {
     /* TEXTURE CREATION */
 
     // Load texture
-    char* textureFile = "assets/textures/chalet.jpg";
-    int texWidth, texHeight, texChannels;
-    pixel_t* pixels = stbi_load(textureFile, &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+    char* texture_file = "assets/textures/texturearray.ktx";
+    if (!boost::filesystem::exists(texture_file)) {
+        throw ao::core::Exception(fmt::format("{} doesn't exist", texture_file));
+    }
+    gli::texture2d_array texture_image(gli::load(texture_file));
 
     // Check image
-    if (!pixels) {
-        throw ao::core::Exception(fmt::format("Fail to load image: {0}", textureFile));
+    if (texture_image.empty()) {
+        throw ao::core::Exception(fmt::format("Fail to load image: {0}", texture_file));
     }
+    u32 array_levels = static_cast<u32>(texture_image.layers());
+    auto image_format = vk::Format(texture_image.format());  // Convert format
+
+    this->LOGGER << ao::core::Logger::Level::debug << fmt::format("Load texture with format: {}", vk::to_string(image_format));
 
     // Create buffer
-    auto textureBuffer = ao::vulkan::BasicTupleBuffer<pixel_t>(this->device);
+    auto textureBuffer = ao::vulkan::BasicTupleBuffer<u8>(this->device);
     textureBuffer
         .init(vk::BufferUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive,
-              vk::MemoryPropertyFlagBits::eHostCoherent | vk::MemoryPropertyFlagBits::eHostVisible, {texWidth * texHeight * 4 * sizeof(pixel_t)})
-        ->update(pixels);
-
-    // Free image
-    stbi_image_free(pixels);
+              vk::MemoryPropertyFlagBits::eHostCoherent | vk::MemoryPropertyFlagBits::eHostVisible, {texture_image.size()})
+        ->update(static_cast<u8*>(texture_image.data()));
 
     // Create image
-    auto image =
-        this->device->createImage(texWidth, texHeight, 1, 1, vk::Format::eR8G8B8A8Unorm, vk::ImageType::e2D, vk::ImageTiling::eOptimal,
-                                  vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal);
+    auto image = this->device->createImage(texture_image.extent().x, texture_image.extent().y, 1, array_levels, image_format, vk::ImageType::e2D,
+                                           vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
+                                           vk::MemoryPropertyFlagBits::eDeviceLocal);
 
     // Assign
     std::get<0>(this->texture) = image.first;
     std::get<1>(this->texture) = image.second;
 
+    // Create BufferCopy
+    std::vector<vk::BufferImageCopy> regions(array_levels);
+    vk::DeviceSize offset = 0;
+    for (size_t i = 0; i < array_levels; i++) {
+        regions[i] = vk::BufferImageCopy(offset, 0, 0, vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, static_cast<u32>(i), 1),
+                                         vk::Offset3D(), vk::Extent3D(texture_image[i][0].extent().x, texture_image[i][0].extent().x, 1));
+
+        offset += texture_image[i][0].size();
+    }
+
     // Process image & copy into image
-    this->device->processImage(std::get<0>(this->texture), vk::Format::eR8G8B8A8Unorm,
-                               vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1), vk::ImageLayout::eUndefined,
+    this->device->processImage(std::get<0>(this->texture), image_format,
+                               vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, array_levels), vk::ImageLayout::eUndefined,
                                vk::ImageLayout::eTransferDstOptimal);
-    this->device->copyBufferToImage(textureBuffer.buffer(), std::get<0>(this->texture),
-                                    vk::BufferImageCopy(0, 0, 0, vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1), vk::Offset3D(),
-                                                        vk::Extent3D(vk::Extent2D(texWidth, texHeight), 1)));
-    this->device->processImage(std::get<0>(this->texture), vk::Format::eR8G8B8A8Unorm,
-                               vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1), vk::ImageLayout::eTransferDstOptimal,
-                               vk::ImageLayout::eShaderReadOnlyOptimal);
+    this->device->copyBufferToImage(textureBuffer.buffer(), std::get<0>(this->texture), regions);
+    this->device->processImage(std::get<0>(this->texture), image_format,
+                               vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, array_levels),
+                               vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
 
     // Create view
-    std::get<2>(this->texture) = this->device->createImageView(std::get<0>(this->texture), vk::Format::eR8G8B8A8Unorm, vk::ImageViewType::e2D,
-                                                               vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
+    std::get<2>(this->texture) = this->device->createImageView(std::get<0>(this->texture), image_format, vk::ImageViewType::e2DArray,
+                                                               vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, array_levels));
 
     // Create sampler
     this->texture_sampler = this->device->logical.createSampler(
         vk::SamplerCreateInfo(vk::SamplerCreateFlags(), vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eLinear,
-                              vk::SamplerAddressMode::eRepeat, vk::SamplerAddressMode::eRepeat, vk::SamplerAddressMode::eRepeat, 0, VK_TRUE, 16,
-                              VK_FALSE, vk::CompareOp::eAlways, 0, 0, vk::BorderColor::eFloatOpaqueBlack, VK_FALSE));
+                              vk::SamplerAddressMode::eClampToEdge, vk::SamplerAddressMode::eClampToEdge, vk::SamplerAddressMode::eClampToEdge, 0,
+                              VK_TRUE, 16, VK_FALSE, vk::CompareOp::eAlways, 0, 0, vk::BorderColor::eFloatOpaqueBlack, VK_FALSE));
 
     /* DESCRIPTOR SETS CREATION */
 
@@ -323,7 +261,7 @@ void ModelDemo::createVulkanBuffers() {
 
     // Configure
     for (size_t i = 0; i < this->swapchain->size(); i++) {
-        vk::DescriptorBufferInfo bufferInfo(this->ubo_buffer->buffer(), this->ubo_buffer->offset(i), sizeof(UniformBufferObject));
+        vk::DescriptorBufferInfo bufferInfo(this->ubo_buffer->buffer(), this->ubo_buffer->offset(i), sizeof(UBO));
         this->device->logical.updateDescriptorSets(
             vk::WriteDescriptorSet(descriptor_sets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &bufferInfo), {});
 
@@ -333,16 +271,17 @@ void ModelDemo::createVulkanBuffers() {
     }
 }
 
-void ModelDemo::createSecondaryCommandBuffers() {
+void TextureArrayDemo::createSecondaryCommandBuffers() {
     this->command_buffers =
         this->secondary_command_pool->allocateCommandBuffers(vk::CommandBufferLevel::eSecondary, static_cast<u32>(this->swapchain->size()));
 }
 
-void ModelDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex, vk::CommandBuffer primaryCmd) {
+void TextureArrayDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex,
+                                                      vk::CommandBuffer primaryCmd) {
     // Create info
     vk::CommandBufferBeginInfo beginInfo =
         vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eRenderPassContinue).setPInheritanceInfo(&inheritanceInfo);
-    ao::vulkan::TupleBuffer<TexturedVertex, u32>* rectangle = this->model_buffer.get();
+    ao::vulkan::TupleBuffer<TexturedVertex, u16>* rectangle = this->model_buffer.get();
 
     // Draw in command
     auto& commandBuffer = this->command_buffers[frameIndex];
@@ -358,11 +297,11 @@ void ModelDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo&
 
         // Draw rectangle
         commandBuffer.bindVertexBuffers(0, rectangle->buffer(), {0});
-        commandBuffer.bindIndexBuffer(rectangle->buffer(), rectangle->offset(1), vk::IndexType::eUint32);
+        commandBuffer.bindIndexBuffer(rectangle->buffer(), rectangle->offset(1), vk::IndexType::eUint16);
         commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->pipelines["main"]->layout()->value(), 0,
                                          this->pipelines["main"]->pools().front().descriptorSets().at(frameIndex), {});
 
-        commandBuffer.drawIndexed(this->indices_count, 1, 0, 0, 0);
+        commandBuffer.drawIndexed(static_cast<u32>(this->indices.size()), 2, 0, 0, 0);
     }
     commandBuffer.end();
 
@@ -370,7 +309,7 @@ void ModelDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo&
     primaryCmd.executeCommands(commandBuffer);
 }
 
-void ModelDemo::beforeCommandBuffersUpdate() {
+void TextureArrayDemo::beforeCommandBuffersUpdate() {
     if (!this->clock_start) {
         this->clock = std::chrono::system_clock::now();
         this->clock_start = true;
@@ -378,12 +317,13 @@ void ModelDemo::beforeCommandBuffersUpdate() {
         return;
     }
 
-    // Delta time
-    float deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(std::chrono::system_clock::now() - this->clock).count();
-
     // Update uniform buffer
-    this->uniform_buffers[this->swapchain->currentFrameIndex()].rotation =
-        glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(45.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    for (size_t i = 0; i < 2; i++) {
+        this->uniform_buffers[this->swapchain->currentFrameIndex()].instances[i].rotation =
+            glm::rotate(glm::mat4(1.0f), glm::radians(360.0f), glm::vec3(.0f, 0.0f, 1.0f));
+        this->uniform_buffers[this->swapchain->currentFrameIndex()].instances[i].positionAndScale = glm::vec4(.0f, .0f, i == 0 ? -.5f : .5f, 1.0f);
+    }
+
     this->uniform_buffers[this->swapchain->currentFrameIndex()].view =
         glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
     this->uniform_buffers[this->swapchain->currentFrameIndex()].proj =

@@ -13,10 +13,6 @@ layout(location = 1) in vec3 inColor;
 
 layout(location = 0) out vec3 fragColor;
 
-out gl_PerVertex {
-    vec4 gl_Position;
-};
-
 void main() {
     gl_Position = ubo.proj * ubo.view * ubo.rotation * vec4(vec3(ubo.scale * inPosition), 1.0);
     fragColor = inColor;

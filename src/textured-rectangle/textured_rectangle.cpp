@@ -201,7 +201,7 @@ void TexturedRectangle::createVulkanBuffers() {
 
     // Create image
     auto image =
-        this->device->createImage(texWidth, texHeight, 1, vk::Format::eR8G8B8A8Unorm, vk::ImageType::e2D, vk::ImageTiling::eOptimal,
+        this->device->createImage(texWidth, texHeight, 1, 1, vk::Format::eR8G8B8A8Unorm, vk::ImageType::e2D, vk::ImageTiling::eOptimal,
                                   vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
     // Assign

@@ -19,19 +19,10 @@
 #include <vulkan/vulkan.hpp>
 
 #include "../shared/glfw_engine.h"
+#include "../shared/ubo.hpp"
 #include "../shared/vertex.hpp"
 
-struct InstanceUniformBufferObject {
-    struct InstanceData {
-        glm::mat4 position;
-        glm::mat4 rotation;
-        float scale = 1.0f;
-    };
-
-    glm::mat4 view;
-    glm::mat4 proj;
-    InstanceData instances[INSTANCE_COUNT];
-};
+using UBO = InstanceUniformBufferObject<INSTANCE_COUNT>;
 
 class InstancingDemo : public virtual ao::vulkan::GLFWEngine {
    public:
@@ -42,9 +33,9 @@ class InstancingDemo : public virtual ao::vulkan::GLFWEngine {
     std::vector<u16> indices;
 
     std::unique_ptr<ao::vulkan::StagingTupleBuffer<Vertex, u16>> model_buffer;
-    std::unique_ptr<ao::vulkan::BasicDynamicArrayBuffer<InstanceUniformBufferObject>> ubo_buffer;
+    std::unique_ptr<ao::vulkan::BasicDynamicArrayBuffer<UBO>> ubo_buffer;
 
-    std::vector<InstanceUniformBufferObject> uniform_buffers;
+    std::vector<UBO> uniform_buffers;
     std::vector<float> rotations;
 
     explicit InstancingDemo(std::shared_ptr<ao::vulkan::EngineSettings> settings)

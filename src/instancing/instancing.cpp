@@ -167,9 +167,9 @@ void InstancingDemo::createVulkanBuffers() {
 
     this->model_buffer->freeHostBuffer();
 
-    this->ubo_buffer = std::make_unique<ao::vulkan::BasicDynamicArrayBuffer<InstanceUniformBufferObject>>(this->swapchain->size(), this->device);
+    this->ubo_buffer = std::make_unique<ao::vulkan::BasicDynamicArrayBuffer<UBO>>(this->swapchain->size(), this->device);
     this->ubo_buffer->init(vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, vk::MemoryPropertyFlagBits::eHostVisible,
-                           ao::vulkan::Buffer::CalculateUBOAligmentSize(this->device->physical, sizeof(InstanceUniformBufferObject)));
+                           ao::vulkan::Buffer::CalculateUBOAligmentSize(this->device->physical, sizeof(UBO)));
 
     // Map buffer
     this->ubo_buffer->map();
@@ -187,7 +187,7 @@ void InstancingDemo::createVulkanBuffers() {
 
     // Configure
     for (size_t i = 0; i < this->swapchain->size(); i++) {
-        vk::DescriptorBufferInfo bufferInfo(this->ubo_buffer->buffer(), this->ubo_buffer->offset(i), sizeof(InstanceUniformBufferObject));
+        vk::DescriptorBufferInfo bufferInfo(this->ubo_buffer->buffer(), this->ubo_buffer->offset(i), sizeof(UBO));
         this->device->logical.updateDescriptorSets(
             vk::WriteDescriptorSet(descriptor_sets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &bufferInfo), {});
     }
@@ -252,7 +252,7 @@ void InstancingDemo::beforeCommandBuffersUpdate() {
     for (size_t i = 0; i < INSTANCE_COUNT; i++) {
         this->uniform_buffers[this->swapchain->currentFrameIndex()].instances[i].rotation =
             glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(this->rotations[i]), glm::vec3(.0f, 1.0f, 1.0f));
-        this->uniform_buffers[this->swapchain->currentFrameIndex()].instances[i].scale = (0.25f * glm::cos(deltaTime)) + 0.75f;
+        this->uniform_buffers[this->swapchain->currentFrameIndex()].instances[i].positionAndScale.w = (0.25f * glm::cos(deltaTime)) + 0.75f;
     }
 
     this->uniform_buffers[this->swapchain->currentFrameIndex()].view =

@@ -2,9 +2,8 @@
 #extension GL_ARB_separate_shader_objects : enable
 
 struct InstanceData {
-    mat4 position;
     mat4 rotation;
-    float scale;
+    vec4 positionAndScale;
 };
 
 layout(binding = 0) uniform UniformBufferObject {
@@ -18,11 +17,7 @@ layout(location = 1) in vec3 inColor;
 
 layout(location = 0) out vec3 fragColor;
 
-out gl_PerVertex {
-    vec4 gl_Position;
-};
-
 void main() {
-    gl_Position = ubo.proj * ubo.view * ubo.instances[gl_InstanceIndex].rotation * vec4(vec3(ubo.instances[gl_InstanceIndex].scale * inPosition), 1.0);
+    gl_Position = ubo.proj * ubo.view * ubo.instances[gl_InstanceIndex].rotation * vec4(vec3(ubo.instances[gl_InstanceIndex].positionAndScale.w * inPosition), 1.0);
     fragColor = inColor;
 }

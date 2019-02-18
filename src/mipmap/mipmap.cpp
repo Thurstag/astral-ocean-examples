@@ -6,7 +6,6 @@
 
 #include <execution>
 
-#define STB_IMAGE_IMPLEMENTATION
 #include <ao/vulkan/wrapper/pipeline/graphics_pipeline.h>
 #include <meshoptimizer.h>
 #include <objparser.h>
@@ -61,7 +60,7 @@ void MipmapDemo::setUpTexture() {
         ->update(static_cast<u8*>(texture_image.data()));
 
     // Create image
-    auto image = this->device->createImage(texture_image.extent().x, texture_image.extent().y, mip_levels, image_format, vk::ImageType::e2D,
+    auto image = this->device->createImage(texture_image.extent().x, texture_image.extent().y, mip_levels, 1, image_format, vk::ImageType::e2D,
                                            vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
                                            vk::MemoryPropertyFlagBits::eDeviceLocal);
 
@@ -360,8 +359,7 @@ void MipmapDemo::createVulkanBuffers() {
     this->LOGGER << ao::core::Logger::Level::trace << "Convert MeshOptVertex -> TexturedVertex";
     this->vertices.resize(vertices_count);
     for (size_t i = 0; i < vertices_count; i++) {
-        vertices[i] = {
-            {remap_vertices[i].px, remap_vertices[i].py, remap_vertices[i].pz}, {1.0f, 1.0f, 1.0f}, {remap_vertices[i].tx, remap_vertices[i].ty}};
+        vertices[i] = {{remap_vertices[i].px, remap_vertices[i].py, remap_vertices[i].pz}, {remap_vertices[i].tx, remap_vertices[i].ty}};
     }
 
     this->LOGGER << ao::core::Logger::Level::trace << "=== Model loading end ===";

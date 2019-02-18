@@ -22,8 +22,9 @@
 #include "../shared/vertex.hpp"
 
 using pixel_t = unsigned char;
+using UBO = InstanceUniformBufferObject<2>;
 
-class TexturedRectangle : public virtual ao::vulkan::GLFWEngine {
+class TextureArrayDemo : public virtual ao::vulkan::GLFWEngine {
    public:
     std::chrono::time_point<std::chrono::system_clock> clock;
     bool clock_start = false;
@@ -31,14 +32,14 @@ class TexturedRectangle : public virtual ao::vulkan::GLFWEngine {
     std::vector<TexturedVertex> vertices;
     std::vector<u16> indices;
 
-    std::unique_ptr<ao::vulkan::BasicDynamicArrayBuffer<UniformBufferObject>> ubo_buffer;
+    std::unique_ptr<ao::vulkan::BasicDynamicArrayBuffer<UBO>> ubo_buffer;
     std::unique_ptr<ao::vulkan::StagingTupleBuffer<TexturedVertex, u16>> model_buffer;
     std::tuple<vk::Image, vk::DeviceMemory, vk::ImageView> texture;
     vk::Sampler texture_sampler;
 
-    std::vector<UniformBufferObject> uniform_buffers;
+    std::vector<UBO> uniform_buffers;
 
-    explicit TexturedRectangle(std::shared_ptr<ao::vulkan::EngineSettings> settings)
+    explicit TextureArrayDemo(std::shared_ptr<ao::vulkan::EngineSettings> settings)
         : ao::vulkan::GLFWEngine(settings),
           ao::vulkan::Engine(settings),
           vertices({{{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f}},
@@ -46,7 +47,7 @@ class TexturedRectangle : public virtual ao::vulkan::GLFWEngine {
                     {{0.5f, 0.5f, 0.0f}, {0.0f, 1.0f}},
                     {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f}}}),
           indices({0, 1, 2, 2, 3, 0}){};
-    virtual ~TexturedRectangle() = default;
+    virtual ~TextureArrayDemo() = default;
 
     void freeVulkan() override;
     vk::RenderPass createRenderPass() override;
