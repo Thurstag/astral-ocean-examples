@@ -8,6 +8,24 @@
 #include <boost/filesystem.hpp>
 #include <gli/gli.hpp>
 
+void TextureArrayDemo::onKeyEventCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+    ao::vulkan::GLFWEngine::onKeyEventCallback(window, key, scancode, action, mods);
+
+    if (key == GLFW_KEY_DOWN && action == GLFW_PRESS) {  // DOWN
+        this->array_level_index--;
+        if (this->array_level_index > this->array_levels) {
+            this->array_level_index = 0;
+        }
+
+        this->LOGGER << ao::core::Logger::Level::debug << fmt::format("Base array index: {}", array_level_index);
+    } else if (key == GLFW_KEY_UP && action == GLFW_PRESS) {  // UP
+        this->array_level_index++;
+        this->array_level_index = std::min<u32>(this->array_level_index, this->array_levels - INSTANCE_COUNT);
+
+        this->LOGGER << ao::core::Logger::Level::debug << fmt::format("Base array index: {}", array_level_index);
+    }
+}
+
 void TextureArrayDemo::freeVulkan() {
     this->model_buffer.reset();
     this->ubo_buffer.reset();
@@ -77,7 +95,10 @@ void TextureArrayDemo::createPipelines() {
     descriptor_set_layouts.push_back(this->device->logical.createDescriptorSetLayout(
         vk::DescriptorSetLayoutCreateInfo(vk::DescriptorSetLayoutCreateFlags(), static_cast<u32>(bindings.size()), bindings.data())));
 
-    auto pipeline_layout = std::make_shared<ao::vulkan::PipelineLayout>(this->device, descriptor_set_layouts);
+    std::vector<vk::PushConstantRange> push_constants;
+    push_constants.push_back(vk::PushConstantRange(vk::ShaderStageFlagBits::eVertex, 0, sizeof(this->array_level_index)));
+
+    auto pipeline_layout = std::make_shared<ao::vulkan::PipelineLayout>(this->device, descriptor_set_layouts, push_constants);
 
     /* PIPELINE PART */
 
@@ -201,7 +222,7 @@ void TextureArrayDemo::createVulkanBuffers() {
     if (texture_image.empty()) {
         throw ao::core::Exception(fmt::format("Fail to load image: {0}", texture_file));
     }
-    u32 array_levels = static_cast<u32>(texture_image.layers());
+    this->array_levels = static_cast<u32>(texture_image.layers());
     auto image_format = vk::Format(texture_image.format());  // Convert format
 
     this->LOGGER << ao::core::Logger::Level::debug << fmt::format("Load texture with format: {}", vk::to_string(image_format));
@@ -214,9 +235,9 @@ void TextureArrayDemo::createVulkanBuffers() {
         ->update(static_cast<u8*>(texture_image.data()));
 
     // Create image
-    auto image = this->device->createImage(texture_image.extent().x, texture_image.extent().y, 1, array_levels, image_format, vk::ImageType::e2D,
-                                           vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
-                                           vk::MemoryPropertyFlagBits::eDeviceLocal);
+    auto image = this->device->createImage(
+        texture_image.extent().x, texture_image.extent().y, 1, this->array_levels, image_format, vk::ImageType::e2D, vk::ImageTiling::eOptimal,
+        vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
     // Assign
     std::get<0>(this->texture) = image.first;
@@ -234,16 +255,17 @@ void TextureArrayDemo::createVulkanBuffers() {
 
     // Process image & copy into image
     this->device->processImage(std::get<0>(this->texture), image_format,
-                               vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, array_levels), vk::ImageLayout::eUndefined,
+                               vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, this->array_levels), vk::ImageLayout::eUndefined,
                                vk::ImageLayout::eTransferDstOptimal);
     this->device->copyBufferToImage(textureBuffer.buffer(), std::get<0>(this->texture), regions);
     this->device->processImage(std::get<0>(this->texture), image_format,
-                               vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, array_levels),
+                               vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, this->array_levels),
                                vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
 
     // Create view
-    std::get<2>(this->texture) = this->device->createImageView(std::get<0>(this->texture), image_format, vk::ImageViewType::e2DArray,
-                                                               vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, array_levels));
+    std::get<2>(this->texture) =
+        this->device->createImageView(std::get<0>(this->texture), image_format, vk::ImageViewType::e2DArray,
+                                      vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, this->array_levels));
 
     // Create sampler
     this->texture_sampler = this->device->logical.createSampler(
@@ -292,6 +314,9 @@ void TextureArrayDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritan
             0, vk::Viewport(0, 0, static_cast<float>(this->swapchain->extent().width), static_cast<float>(this->swapchain->extent().height), 0, 1));
         commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(), this->swapchain->extent()));
 
+        // Push constants
+        commandBuffer.pushConstants<u32>(this->pipelines["main"]->layout()->value(), vk::ShaderStageFlagBits::eVertex, 0, this->array_level_index);
+
         // Bind pipeline
         commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, this->pipelines["main"]->value());
 
@@ -301,7 +326,7 @@ void TextureArrayDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritan
         commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->pipelines["main"]->layout()->value(), 0,
                                          this->pipelines["main"]->pools().front().descriptorSets().at(frameIndex), {});
 
-        commandBuffer.drawIndexed(static_cast<u32>(this->indices.size()), 2, 0, 0, 0);
+        commandBuffer.drawIndexed(static_cast<u32>(this->indices.size()), INSTANCE_COUNT, 0, 0, 0);
     }
     commandBuffer.end();
 
@@ -318,10 +343,11 @@ void TextureArrayDemo::beforeCommandBuffersUpdate() {
     }
 
     // Update uniform buffer
-    for (size_t i = 0; i < 2; i++) {
+    for (size_t i = 0; i < INSTANCE_COUNT; i++) {
         this->uniform_buffers[this->swapchain->currentFrameIndex()].instances[i].rotation =
             glm::rotate(glm::mat4(1.0f), glm::radians(360.0f), glm::vec3(.0f, 0.0f, 1.0f));
-        this->uniform_buffers[this->swapchain->currentFrameIndex()].instances[i].positionAndScale = glm::vec4(.0f, .0f, i == 0 ? -.5f : .5f, 1.0f);
+        this->uniform_buffers[this->swapchain->currentFrameIndex()].instances[i].positionAndScale =
+            glm::vec4(.0f, .0f, (i % 2 == 0 ? -.5f : .5f) * i, 1.0f);
     }
 
     this->uniform_buffers[this->swapchain->currentFrameIndex()].view =

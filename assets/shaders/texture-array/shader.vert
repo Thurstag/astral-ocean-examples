@@ -12,6 +12,10 @@ layout(binding = 0) uniform UniformBufferObject {
     InstanceData instances[2];
 } ubo;
 
+layout(push_constant) uniform PushConsts {
+	uint array_layer_index;
+} pushConsts;
+
 layout(location = 0) in vec2 inPosition;
 layout(location = 1) in vec2 inTexCoord;
 
@@ -22,5 +26,5 @@ void main() {
     position += vec4(ubo.instances[gl_InstanceIndex].positionAndScale.xyz, 0.0);
 
     gl_Position = ubo.proj * ubo.view * position;
-    fragTexCoord = vec3(inTexCoord, gl_InstanceIndex);
+    fragTexCoord = vec3(inTexCoord, gl_InstanceIndex + pushConsts.array_layer_index);
 }

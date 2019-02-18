@@ -8,6 +8,7 @@
 #include <vector>
 
 #define GLM_ENABLE_EXPERIMENTAL
+#define INSTANCE_COUNT 3
 
 #include <ao/vulkan/utilities/settings.h>
 #include <ao/vulkan/wrapper/shader_module.h>
@@ -22,7 +23,7 @@
 #include "../shared/vertex.hpp"
 
 using pixel_t = unsigned char;
-using UBO = InstanceUniformBufferObject<2>;
+using UBO = InstanceUniformBufferObject<INSTANCE_COUNT>;
 
 class TextureArrayDemo : public virtual ao::vulkan::GLFWEngine {
    public:
@@ -39,6 +40,9 @@ class TextureArrayDemo : public virtual ao::vulkan::GLFWEngine {
 
     std::vector<UBO> uniform_buffers;
 
+    u32 array_levels;
+    u32 array_level_index = 0;
+
     explicit TextureArrayDemo(std::shared_ptr<ao::vulkan::EngineSettings> settings)
         : ao::vulkan::GLFWEngine(settings),
           ao::vulkan::Engine(settings),
@@ -49,6 +53,7 @@ class TextureArrayDemo : public virtual ao::vulkan::GLFWEngine {
           indices({0, 1, 2, 2, 3, 0}){};
     virtual ~TextureArrayDemo() = default;
 
+    virtual void onKeyEventCallback(GLFWwindow* window, int key, int scancode, int action, int mods) override;
     void freeVulkan() override;
     vk::RenderPass createRenderPass() override;
     void createPipelines() override;
