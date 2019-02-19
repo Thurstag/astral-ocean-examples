@@ -36,14 +36,14 @@ vk::RenderPass DepthRectangleDemo::createRenderPass() {
         .setFinalLayout(vk::ImageLayout::eDepthStencilAttachmentOptimal);
 
     // Define references
-    vk::AttachmentReference colorReference = vk::AttachmentReference(0, vk::ImageLayout::eColorAttachmentOptimal);
-    vk::AttachmentReference depthReference = vk::AttachmentReference(1, vk::ImageLayout::eDepthStencilAttachmentOptimal);
+    vk::AttachmentReference color_ref = vk::AttachmentReference(0, vk::ImageLayout::eColorAttachmentOptimal);
+    vk::AttachmentReference depth_ref = vk::AttachmentReference(1, vk::ImageLayout::eDepthStencilAttachmentOptimal);
 
     vk::SubpassDescription subpass = vk::SubpassDescription()
                                          .setPipelineBindPoint(vk::PipelineBindPoint::eGraphics)
                                          .setColorAttachmentCount(1)
-                                         .setPColorAttachments(&colorReference)
-                                         .setPDepthStencilAttachment(&depthReference);
+                                         .setPColorAttachments(&color_ref)
+                                         .setPDepthStencilAttachment(&depth_ref);
     vk::SubpassDependency dependency = vk::SubpassDependency()
                                            .setSrcSubpass(VK_SUBPASS_EXTERNAL)
                                            .setDstSubpass(0)
@@ -151,12 +151,12 @@ void DepthRectangleDemo::createPipelines() {
 
     /* DESCRIPTOR POOL PART */
 
-    std::array<vk::DescriptorPoolSize, 1> poolSizes;
-    poolSizes[0] = vk::DescriptorPoolSize(vk::DescriptorType::eUniformBuffer, static_cast<u32>(this->swapchain->size()));
+    std::array<vk::DescriptorPoolSize, 1> pool_sizes;
+    pool_sizes[0] = vk::DescriptorPoolSize(vk::DescriptorType::eUniformBuffer, static_cast<u32>(this->swapchain->size()));
 
     this->pipelines["main"]->pools().push_back(ao::vulkan::DescriptorPool(
         this->device, vk::DescriptorPoolCreateInfo(vk::DescriptorPoolCreateFlags(), static_cast<u32>(this->swapchain->size()),
-                                                   static_cast<u32>(poolSizes.size()), poolSizes.data())));
+                                                   static_cast<u32>(pool_sizes.size()), pool_sizes.data())));
 }
 
 void DepthRectangleDemo::createVulkanBuffers() {
@@ -187,48 +187,65 @@ void DepthRectangleDemo::createVulkanBuffers() {
 
     // Configure
     for (size_t i = 0; i < this->swapchain->size(); i++) {
-        vk::DescriptorBufferInfo bufferInfo(this->ubo_buffer->buffer(), this->ubo_buffer->offset(i), sizeof(UniformBufferObject));
+        vk::DescriptorBufferInfo buffer_info(this->ubo_buffer->buffer(), this->ubo_buffer->offset(i), sizeof(UniformBufferObject));
+
         this->device->logical.updateDescriptorSets(
-            vk::WriteDescriptorSet(descriptor_sets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &bufferInfo), {});
+            vk::WriteDescriptorSet(descriptor_sets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &buffer_info), {});
     }
 }
 
 void DepthRectangleDemo::createSecondaryCommandBuffers() {
     this->command_buffers =
         this->secondary_command_pool->allocateCommandBuffers(vk::CommandBufferLevel::eSecondary, static_cast<u32>(this->swapchain->size()));
+
+    for (auto& command_buffer : this->command_buffers) {
+        this->to_update[command_buffer] = true;
+    }
 }
 
-void DepthRectangleDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex,
-                                                        vk::CommandBuffer primaryCmd) {
-    // Create info
-    vk::CommandBufferBeginInfo beginInfo =
-        vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eRenderPassContinue).setPInheritanceInfo(&inheritanceInfo);
-    ao::vulkan::TupleBuffer<Vertex, u16>* rectangle = this->model_buffer.get();
+void DepthRectangleDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritance_info, int frame_index,
+                                                        vk::CommandBuffer primary_command) {
+    auto& command_buffer = this->command_buffers[frame_index];
+
+    // Reset all command buffers
+    if (this->swapchain->state() == ao::vulkan::SwapchainState::eReset) {
+        for (auto [key, value] : this->to_update) {
+            this->to_update[key] = true;
+        }
+    }
 
     // Draw in command
-    auto& commandBuffer = this->command_buffers[frameIndex];
-    commandBuffer.begin(beginInfo);
-    {
-        // Set viewport & scissor
-        commandBuffer.setViewport(
-            0, vk::Viewport(0, 0, static_cast<float>(this->swapchain->extent().width), static_cast<float>(this->swapchain->extent().height), 0, 1));
-        commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(), this->swapchain->extent()));
+    if (this->to_update[command_buffer]) {
+        // Create info
+        vk::CommandBufferBeginInfo begin_info =
+            vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eRenderPassContinue).setPInheritanceInfo(&inheritance_info);
 
-        // Bind pipeline
-        commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, this->pipelines["main"]->value());
+        command_buffer.begin(begin_info);
+        {
+            // Set viewport & scissor
+            command_buffer.setViewport(0, vk::Viewport(0, 0, static_cast<float>(this->swapchain->extent().width),
+                                                       static_cast<float>(this->swapchain->extent().height), 0, 1));
+            command_buffer.setScissor(0, vk::Rect2D(vk::Offset2D(), this->swapchain->extent()));
 
-        // Draw rectangle
-        commandBuffer.bindVertexBuffers(0, rectangle->buffer(), {0});
-        commandBuffer.bindIndexBuffer(rectangle->buffer(), rectangle->offset(1), vk::IndexType::eUint16);
-        commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->pipelines["main"]->layout()->value(), 0,
-                                         this->pipelines["main"]->pools().front().descriptorSets().at(frameIndex), {});
+            // Bind pipeline
+            command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, this->pipelines["main"]->value());
 
-        commandBuffer.drawIndexed(static_cast<u32>(this->indices.size()), 1, 0, 0, 0);
+            // Draw rectangle
+            ao::vulkan::TupleBuffer<Vertex, u16>* rectangle = this->model_buffer.get();
+            command_buffer.bindVertexBuffers(0, rectangle->buffer(), {0});
+            command_buffer.bindIndexBuffer(rectangle->buffer(), rectangle->offset(1), vk::IndexType::eUint16);
+            command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->pipelines["main"]->layout()->value(), 0,
+                                              this->pipelines["main"]->pools().front().descriptorSets().at(frame_index), {});
+
+            command_buffer.drawIndexed(static_cast<u32>(this->indices.size()), 1, 0, 0, 0);
+        }
+        command_buffer.end();
+
+        this->to_update[command_buffer] = false;
     }
-    commandBuffer.end();
 
     // Pass to primary
-    primaryCmd.executeCommands(commandBuffer);
+    primary_command.executeCommands(command_buffer);
 }
 
 void DepthRectangleDemo::beforeCommandBuffersUpdate() {
@@ -236,17 +253,19 @@ void DepthRectangleDemo::beforeCommandBuffersUpdate() {
         this->clock = std::chrono::system_clock::now();
         this->clock_start = true;
 
+        // Init uniform buffers
+        for (size_t i = 0; i < this->swapchain->size(); i++) {
+            this->uniform_buffers[i].view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        }
         return;
     }
 
     // Delta time
-    float deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(std::chrono::system_clock::now() - this->clock).count();
+    float delta_time = std::chrono::duration<float, std::chrono::seconds::period>(std::chrono::system_clock::now() - this->clock).count();
 
     // Update uniform buffer
     this->uniform_buffers[this->swapchain->currentFrameIndex()].rotation =
-        glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    this->uniform_buffers[this->swapchain->currentFrameIndex()].view =
-        glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        glm::rotate(glm::mat4(1.0f), delta_time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
     this->uniform_buffers[this->swapchain->currentFrameIndex()].proj =
         glm::perspective(glm::radians(45.0f), this->swapchain->extent().width / (float)this->swapchain->extent().height, 0.1f, 10.0f);
     this->uniform_buffers[this->swapchain->currentFrameIndex()].proj[1][1] *= -1;  // Adapt for vulkan

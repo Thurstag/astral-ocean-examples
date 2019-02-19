@@ -115,7 +115,7 @@ void ao::vulkan::GLFWEngine::initVulkan() {
     // Create command pool
     this->secondary_command_pool = std::make_unique<ao::vulkan::CommandPool>(
         this->device->logical, vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
-        this->device->queues[vk::to_string(vk::QueueFlagBits::eGraphics)].family_index, ao::vulkan::CommandPoolAccessModeFlagBits::eConcurrent);
+        this->device->queues->at(vk::to_string(vk::QueueFlagBits::eGraphics)).family_index, ao::vulkan::CommandPoolAccessModeFlagBits::eConcurrent);
 
     // Init metric module (TODO: DrawCall per second)
     this->metrics = std::make_unique<ao::vulkan::MetricModule>(this->device);
@@ -219,7 +219,14 @@ std::vector<ao::vulkan::QueueRequest> ao::vulkan::GLFWEngine::requestQueues() co
     // Get indices
     auto transfer_index = ao::vulkan::utilities::findQueueFamilyIndex(families, vk::QueueFlagBits::eTransfer);
     auto graphics_index = ao::vulkan::utilities::findQueueFamilyIndex(families, vk::QueueFlagBits::eGraphics);
+    auto compute_index = ao::vulkan::utilities::findQueueFamilyIndex(families, vk::QueueFlagBits::eCompute);
 
-    return {ao::vulkan::QueueRequest(vk::QueueFlagBits::eGraphics, 1, (families[graphics_index].queueCount - 1) / 2),
-            ao::vulkan::QueueRequest(vk::QueueFlagBits::eTransfer, 0, families[transfer_index].queueCount)};
+    if (compute_index == graphics_index) {
+        return {ao::vulkan::QueueRequest(vk::QueueFlagBits::eGraphics, 1, (families[graphics_index].queueCount - 2) / 2),
+                ao::vulkan::QueueRequest(vk::QueueFlagBits::eTransfer, 0, families[transfer_index].queueCount),
+                ao::vulkan::QueueRequest(vk::QueueFlagBits::eCompute, 1, (families[compute_index].queueCount - 2) / 2)};
+    }
+    return {ao::vulkan::QueueRequest(vk::QueueFlagBits::eGraphics, 1, families[graphics_index].queueCount - 1),
+            ao::vulkan::QueueRequest(vk::QueueFlagBits::eTransfer, 0, families[transfer_index].queueCount),
+            ao::vulkan::QueueRequest(vk::QueueFlagBits::eCompute, 1, families[compute_index].queueCount - 1)};
 }

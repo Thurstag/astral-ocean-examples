@@ -16,6 +16,7 @@ struct Main {};
 
 int main(int argc, char* argv[]) {
     ao::core::Logger::Init();
+    ao::core::Logger::SetMinLevel(ao::core::Logger::Level::debug);
 
     // Get LOGGER
     ao::core::Logger LOGGER = ao::core::Logger::GetInstance<Main>();
@@ -45,12 +46,14 @@ int main(int argc, char* argv[]) {
         exceptionThrown = true;
     }
 
-    // Free engine
-    delete engine;
-
     if (exceptionThrown) {
+        engine->freeVulkan();
+
         std::cout << "Press enter to continue";
         std::cin.ignore();
     }
+
+    // Free engine
+    delete engine;
     return 0;
 }

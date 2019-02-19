@@ -35,12 +35,10 @@ vk::RenderPass TexturedRectangle::createRenderPass() {
         .setFinalLayout(vk::ImageLayout::ePresentSrcKHR);
 
     // Define references
-    vk::AttachmentReference colorReference = vk::AttachmentReference(0, vk::ImageLayout::eColorAttachmentOptimal);
+    vk::AttachmentReference color_ref = vk::AttachmentReference(0, vk::ImageLayout::eColorAttachmentOptimal);
 
-    vk::SubpassDescription subpass = vk::SubpassDescription()
-                                         .setPipelineBindPoint(vk::PipelineBindPoint::eGraphics)
-                                         .setColorAttachmentCount(1)
-                                         .setPColorAttachments(&colorReference);
+    vk::SubpassDescription subpass =
+        vk::SubpassDescription().setPipelineBindPoint(vk::PipelineBindPoint::eGraphics).setColorAttachmentCount(1).setPColorAttachments(&color_ref);
     vk::SubpassDependency dependency = vk::SubpassDependency()
                                            .setSrcSubpass(VK_SUBPASS_EXTERNAL)
                                            .setDstSubpass(0)
@@ -149,13 +147,13 @@ void TexturedRectangle::createPipelines() {
 
     /* DESCRIPTOR POOL PART */
 
-    std::array<vk::DescriptorPoolSize, 2> poolSizes;
-    poolSizes[0] = vk::DescriptorPoolSize(vk::DescriptorType::eUniformBuffer, static_cast<u32>(this->swapchain->size()));
-    poolSizes[1] = vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler, static_cast<u32>(this->swapchain->size()));
+    std::array<vk::DescriptorPoolSize, 2> pool_sizes;
+    pool_sizes[0] = vk::DescriptorPoolSize(vk::DescriptorType::eUniformBuffer, static_cast<u32>(this->swapchain->size()));
+    pool_sizes[1] = vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler, static_cast<u32>(this->swapchain->size()));
 
     this->pipelines["main"]->pools().push_back(std::move(ao::vulkan::DescriptorPool(
         this->device, vk::DescriptorPoolCreateInfo(vk::DescriptorPoolCreateFlags(), static_cast<u32>(this->swapchain->size()),
-                                                   static_cast<u32>(poolSizes.size()), poolSizes.data()))));
+                                                   static_cast<u32>(pool_sizes.size()), pool_sizes.data()))));
 }
 
 void TexturedRectangle::createVulkanBuffers() {
@@ -180,20 +178,21 @@ void TexturedRectangle::createVulkanBuffers() {
     /* TEXTURE CREATION */
 
     // Load texture
-    char* textureFile = "assets/textures/face.jpg";
-    int texWidth, texHeight, texChannels;
-    pixel_t* pixels = stbi_load(textureFile, &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+    char* texture_file = "assets/textures/face.jpg";
+    int texture_width, texture_height, texture_channels;
+    pixel_t* pixels = stbi_load(texture_file, &texture_width, &texture_height, &texture_channels, STBI_rgb_alpha);
 
     // Check image
     if (!pixels) {
-        throw ao::core::Exception(fmt::format("Fail to load image: {0}", textureFile));
+        throw ao::core::Exception(fmt::format("Fail to load image: {0}", texture_file));
     }
 
     // Create buffer
-    auto textureBuffer = ao::vulkan::BasicTupleBuffer<pixel_t>(this->device);
-    textureBuffer
+    auto texture_buffer = ao::vulkan::BasicTupleBuffer<pixel_t>(this->device);
+    texture_buffer
         .init(vk::BufferUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive,
-              vk::MemoryPropertyFlagBits::eHostCoherent | vk::MemoryPropertyFlagBits::eHostVisible, {texWidth * texHeight * 4 * sizeof(pixel_t)})
+              vk::MemoryPropertyFlagBits::eHostCoherent | vk::MemoryPropertyFlagBits::eHostVisible,
+              {texture_width * texture_height * 4 * sizeof(pixel_t)})
         ->update(pixels);
 
     // Free image
@@ -201,7 +200,7 @@ void TexturedRectangle::createVulkanBuffers() {
 
     // Create image
     auto image =
-        this->device->createImage(texWidth, texHeight, 1, 1, vk::Format::eR8G8B8A8Unorm, vk::ImageType::e2D, vk::ImageTiling::eOptimal,
+        this->device->createImage(texture_width, texture_height, 1, 1, vk::Format::eR8G8B8A8Unorm, vk::ImageType::e2D, vk::ImageTiling::eOptimal,
                                   vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
     // Assign
@@ -212,9 +211,9 @@ void TexturedRectangle::createVulkanBuffers() {
     this->device->processImage(std::get<0>(this->texture), vk::Format::eR8G8B8A8Unorm,
                                vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1), vk::ImageLayout::eUndefined,
                                vk::ImageLayout::eTransferDstOptimal);
-    this->device->copyBufferToImage(textureBuffer.buffer(), std::get<0>(this->texture),
+    this->device->copyBufferToImage(texture_buffer.buffer(), std::get<0>(this->texture),
                                     vk::BufferImageCopy(0, 0, 0, vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1), vk::Offset3D(),
-                                                        vk::Extent3D(vk::Extent2D(texWidth, texHeight), 1)));
+                                                        vk::Extent3D(vk::Extent2D(texture_width, texture_height), 1)));
     this->device->processImage(std::get<0>(this->texture), vk::Format::eR8G8B8A8Unorm,
                                vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1), vk::ImageLayout::eTransferDstOptimal,
                                vk::ImageLayout::eShaderReadOnlyOptimal);
@@ -239,52 +238,69 @@ void TexturedRectangle::createVulkanBuffers() {
 
     // Configure
     for (size_t i = 0; i < this->swapchain->size(); i++) {
-        vk::DescriptorBufferInfo bufferInfo(this->ubo_buffer->buffer(), this->ubo_buffer->offset(i), sizeof(UniformBufferObject));
-        this->device->logical.updateDescriptorSets(
-            vk::WriteDescriptorSet(descriptor_sets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &bufferInfo), {});
+        vk::DescriptorImageInfo sample_info(this->texture_sampler, std::get<2>(this->texture), vk::ImageLayout::eShaderReadOnlyOptimal);
+        vk::DescriptorBufferInfo buffer_info(this->ubo_buffer->buffer(), this->ubo_buffer->offset(i), sizeof(UniformBufferObject));
 
-        vk::DescriptorImageInfo sampleInfo(this->texture_sampler, std::get<2>(this->texture), vk::ImageLayout::eShaderReadOnlyOptimal);
         this->device->logical.updateDescriptorSets(
-            vk::WriteDescriptorSet(descriptor_sets[i], 1, 0, 1, vk::DescriptorType::eCombinedImageSampler, &sampleInfo), {});
+            vk::WriteDescriptorSet(descriptor_sets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &buffer_info), {});
+
+        this->device->logical.updateDescriptorSets(
+            vk::WriteDescriptorSet(descriptor_sets[i], 1, 0, 1, vk::DescriptorType::eCombinedImageSampler, &sample_info), {});
     }
 }
 
 void TexturedRectangle::createSecondaryCommandBuffers() {
     this->command_buffers =
         this->secondary_command_pool->allocateCommandBuffers(vk::CommandBufferLevel::eSecondary, static_cast<u32>(this->swapchain->size()));
+
+    for (auto& command_buffer : this->command_buffers) {
+        this->to_update[command_buffer] = true;
+    }
 }
 
-void TexturedRectangle::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex,
-                                                       vk::CommandBuffer primaryCmd) {
-    // Create info
-    vk::CommandBufferBeginInfo beginInfo =
-        vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eRenderPassContinue).setPInheritanceInfo(&inheritanceInfo);
-    ao::vulkan::TupleBuffer<TexturedVertex, u16>* rectangle = this->model_buffer.get();
+void TexturedRectangle::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritance_info, int frame_index,
+                                                       vk::CommandBuffer primary_command) {
+    auto& command_buffer = this->command_buffers[frame_index];
+
+    // Reset all command buffers
+    if (this->swapchain->state() == ao::vulkan::SwapchainState::eReset) {
+        for (auto [key, value] : this->to_update) {
+            this->to_update[key] = true;
+        }
+    }
 
     // Draw in command
-    auto& commandBuffer = this->command_buffers[frameIndex];
-    commandBuffer.begin(beginInfo);
-    {
-        // Set viewport & scissor
-        commandBuffer.setViewport(
-            0, vk::Viewport(0, 0, static_cast<float>(this->swapchain->extent().width), static_cast<float>(this->swapchain->extent().height), 0, 1));
-        commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(), this->swapchain->extent()));
+    if (this->to_update[command_buffer]) {
+        // Begin info
+        vk::CommandBufferBeginInfo begin_info =
+            vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eRenderPassContinue).setPInheritanceInfo(&inheritance_info);
 
-        // Bind pipeline
-        commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, this->pipelines["main"]->value());
+        command_buffer.begin(begin_info);
+        {
+            // Set viewport & scissor
+            command_buffer.setViewport(0, vk::Viewport(0, 0, static_cast<float>(this->swapchain->extent().width),
+                                                       static_cast<float>(this->swapchain->extent().height), 0, 1));
+            command_buffer.setScissor(0, vk::Rect2D(vk::Offset2D(), this->swapchain->extent()));
 
-        // Draw rectangle
-        commandBuffer.bindVertexBuffers(0, rectangle->buffer(), {0});
-        commandBuffer.bindIndexBuffer(rectangle->buffer(), rectangle->offset(1), vk::IndexType::eUint16);
-        commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->pipelines["main"]->layout()->value(), 0,
-                                         this->pipelines["main"]->pools().front().descriptorSets().at(frameIndex), {});
+            // Bind pipeline
+            command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, this->pipelines["main"]->value());
 
-        commandBuffer.drawIndexed(static_cast<u32>(this->indices.size()), 1, 0, 0, 0);
+            // Draw rectangle
+            ao::vulkan::TupleBuffer<TexturedVertex, u16>* rectangle = this->model_buffer.get();
+            command_buffer.bindVertexBuffers(0, rectangle->buffer(), {0});
+            command_buffer.bindIndexBuffer(rectangle->buffer(), rectangle->offset(1), vk::IndexType::eUint16);
+            command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->pipelines["main"]->layout()->value(), 0,
+                                              this->pipelines["main"]->pools().front().descriptorSets().at(frame_index), {});
+
+            command_buffer.drawIndexed(static_cast<u32>(this->indices.size()), 1, 0, 0, 0);
+        }
+        command_buffer.end();
+
+        this->to_update[command_buffer] = false;
     }
-    commandBuffer.end();
 
     // Pass to primary
-    primaryCmd.executeCommands(commandBuffer);
+    primary_command.executeCommands(command_buffer);
 }
 
 void TexturedRectangle::beforeCommandBuffersUpdate() {
@@ -292,17 +308,19 @@ void TexturedRectangle::beforeCommandBuffersUpdate() {
         this->clock = std::chrono::system_clock::now();
         this->clock_start = true;
 
+        // Init uniform buffers
+        for (size_t i = 0; i < this->swapchain->size(); i++) {
+            this->uniform_buffers[i].view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        }
         return;
     }
 
     // Delta time
-    float deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(std::chrono::system_clock::now() - this->clock).count();
+    float delta_time = std::chrono::duration<float, std::chrono::seconds::period>(std::chrono::system_clock::now() - this->clock).count();
 
     // Update uniform buffer
     this->uniform_buffers[this->swapchain->currentFrameIndex()].rotation =
-        glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    this->uniform_buffers[this->swapchain->currentFrameIndex()].view =
-        glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        glm::rotate(glm::mat4(1.0f), delta_time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
     this->uniform_buffers[this->swapchain->currentFrameIndex()].proj =
         glm::perspective(glm::radians(45.0f), this->swapchain->extent().width / (float)this->swapchain->extent().height, 0.1f, 10.0f);
     this->uniform_buffers[this->swapchain->currentFrameIndex()].proj[1][1] *= -1;  // Adapt for vulkan

@@ -137,43 +137,60 @@ void TriangleDemo::createVulkanBuffers() {
 void TriangleDemo::createSecondaryCommandBuffers() {
     this->command_buffers =
         this->secondary_command_pool->allocateCommandBuffers(vk::CommandBufferLevel::eSecondary, static_cast<u32>(this->swapchain->size()));
+
+    for (auto& command_buffer : this->command_buffers) {
+        this->to_update[command_buffer] = true;
+    }
 }
 
-void TriangleDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex, vk::CommandBuffer primaryCmd) {
-    // Create info
-    vk::CommandBufferBeginInfo beginInfo =
-        vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eRenderPassContinue).setPInheritanceInfo(&inheritanceInfo);
+void TriangleDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritance_info, int frame_index,
+                                                  vk::CommandBuffer primary_command) {
+    auto& command_buffer = this->command_buffers[frame_index];
+
+    // Reset all command buffers
+    if (this->swapchain->state() == ao::vulkan::SwapchainState::eReset) {
+        for (auto [key, value] : this->to_update) {
+            this->to_update[key] = true;
+        }
+    }
 
     // Draw in command
-    auto& commandBuffer = this->command_buffers[frameIndex];
-    commandBuffer.begin(beginInfo);
-    {
-        // Set viewport & scissor
-        commandBuffer.setViewport(
-            0, vk::Viewport(0, 0, static_cast<float>(this->swapchain->extent().width), static_cast<float>(this->swapchain->extent().height), 0, 1));
-        commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(), this->swapchain->extent()));
+    if (this->to_update[command_buffer]) {
+        // Begin info
+        vk::CommandBufferBeginInfo begin_info =
+            vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eRenderPassContinue).setPInheritanceInfo(&inheritance_info);
 
-        // Bind pipeline
-        commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, this->pipelines["main"]->value());
+        command_buffer.begin(begin_info);
+        {
+            // Set viewport & scissor
+            command_buffer.setViewport(0, vk::Viewport(0, 0, static_cast<float>(this->swapchain->extent().width),
+                                                       static_cast<float>(this->swapchain->extent().height), 0, 1));
+            command_buffer.setScissor(0, vk::Rect2D(vk::Offset2D(), this->swapchain->extent()));
 
-        // Memory barrier
-        vk::BufferMemoryBarrier barrier(vk::AccessFlags(), vk::AccessFlagBits::eVertexAttributeRead,
-                                        this->device->queues[vk::to_string(vk::QueueFlagBits::eTransfer)].family_index,
-                                        this->device->queues[vk::to_string(vk::QueueFlagBits::eGraphics)].family_index,
-                                        this->vertices_buffer->buffer());
-        commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eVertexInput, vk::DependencyFlags(), {},
-                                      barrier, {});
+            // Bind pipeline
+            command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, this->pipelines["main"]->value());
 
-        // Draw triangle
-        commandBuffer.bindVertexBuffers(0, {this->vertices_buffer->buffer()}, {0});
-        commandBuffer.bindIndexBuffer(this->indices_buffer->buffer(), 0, vk::IndexType::eUint16);
+            // Memory barrier
+            vk::BufferMemoryBarrier barrier(vk::AccessFlags(), vk::AccessFlagBits::eVertexAttributeRead,
+                                            this->device->queues->at(vk::to_string(vk::QueueFlagBits::eTransfer)).family_index,
+                                            this->device->queues->at(vk::to_string(vk::QueueFlagBits::eGraphics)).family_index,
+                                            this->vertices_buffer->buffer());
+            command_buffer.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eVertexInput, vk::DependencyFlags(), {},
+                                           barrier, {});
 
-        commandBuffer.drawIndexed(static_cast<u32>(this->indices.size()), 1, 0, 0, 0);
+            // Draw triangle
+            command_buffer.bindVertexBuffers(0, {this->vertices_buffer->buffer()}, {0});
+            command_buffer.bindIndexBuffer(this->indices_buffer->buffer(), 0, vk::IndexType::eUint16);
+
+            command_buffer.drawIndexed(static_cast<u32>(this->indices.size()), 1, 0, 0, 0);
+        }
+        command_buffer.end();
+
+        this->to_update[command_buffer] = false;
     }
-    commandBuffer.end();
 
     // Pass to primary
-    primaryCmd.executeCommands(commandBuffer);
+    primary_command.executeCommands(command_buffer);
 }
 
 void TriangleDemo::beforeCommandBuffersUpdate() {
@@ -188,15 +205,14 @@ void TriangleDemo::beforeCommandBuffersUpdate() {
     glm::vec3 zAxis(0.0f, 0.0f, 1.0f);
 
     // Delta time
-    float deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(std::chrono::system_clock::now() - this->clock).count();
-    float angles = glm::half_pi<float>();  // Rotation in 1 second
+    float delta_time = std::chrono::duration<float, std::chrono::seconds::period>(std::chrono::system_clock::now() - this->clock).count();
 
     for (Vertex& vertice : this->vertices) {
         // To vec4
         glm::vec4 point(vertice.pos.x, vertice.pos.y, 0, 0);
 
         // Rotate point
-        point = glm::rotate(angles * deltaTime, zAxis) * point;
+        point = glm::rotate(glm::half_pi<float>() * delta_time, zAxis) * point;
 
         // Update vertice
         vertice.pos = glm::vec3(point.x, point.y, point.z);

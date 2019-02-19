@@ -40,8 +40,10 @@ class TextureArrayDemo : public virtual ao::vulkan::GLFWEngine {
 
     std::vector<UBO> uniform_buffers;
 
-    u32 array_levels;
+    std::map<vk::CommandBuffer, bool> to_update;
+
     u32 array_level_index = 0;
+    u32 array_levels;
 
     explicit TextureArrayDemo(std::shared_ptr<ao::vulkan::EngineSettings> settings)
         : ao::vulkan::GLFWEngine(settings),
@@ -59,6 +61,7 @@ class TextureArrayDemo : public virtual ao::vulkan::GLFWEngine {
     void createPipelines() override;
     void createVulkanBuffers() override;
     void createSecondaryCommandBuffers() override;
-    void executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex, vk::CommandBuffer primaryCmd) override;
+    void executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritance_info, int frame_index,
+                                        vk::CommandBuffer primary_command) override;
     void beforeCommandBuffersUpdate() override;
 };

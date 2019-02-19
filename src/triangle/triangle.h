@@ -31,6 +31,8 @@ class TriangleDemo : public virtual ao::vulkan::GLFWEngine {
     std::unique_ptr<ao::vulkan::StagingTupleBuffer<Vertex>> vertices_buffer;
     std::unique_ptr<ao::vulkan::StagingTupleBuffer<u16>> indices_buffer;
 
+    std::map<vk::CommandBuffer, bool> to_update;
+
     explicit TriangleDemo(std::shared_ptr<ao::vulkan::EngineSettings> settings)
         : ao::vulkan::GLFWEngine(settings),
           ao::vulkan::Engine(settings),
@@ -43,6 +45,7 @@ class TriangleDemo : public virtual ao::vulkan::GLFWEngine {
     void createPipelines() override;
     void createVulkanBuffers() override;
     void createSecondaryCommandBuffers() override;
-    void executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex, vk::CommandBuffer primaryCmd) override;
+    void executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritance_info, int frame_index,
+                                        vk::CommandBuffer primary_command) override;
     void beforeCommandBuffersUpdate() override;
 };

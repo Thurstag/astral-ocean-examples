@@ -46,12 +46,14 @@ int main(int argc, char* argv[]) {
         exceptionThrown = true;
     }
 
-    // Free engine
-    delete engine;
-
     if (exceptionThrown) {
+        engine->freeVulkan();
+
         std::cout << "Press enter to continue";
         std::cin.ignore();
     }
+
+    // Free engine
+    delete engine;
     return 0;
 }

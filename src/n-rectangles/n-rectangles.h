@@ -33,10 +33,12 @@ class RectanglesDemo : public virtual ao::vulkan::GLFWEngine {
     std::unique_ptr<ao::vulkan::StagingTupleBuffer<Vertex, u16>> object_buffer;
     std::unique_ptr<ao::vulkan::BasicDynamicArrayBuffer<UniformBufferObject>> ubo_buffer;
 
-    std::array<vk::CommandBuffer, RECTANGLE_COUNT> sub_commands;
+    std::vector<std::array<vk::CommandBuffer, RECTANGLE_COUNT>> sub_commands;
 
     std::vector<UniformBufferObject> uniform_buffers;
     std::vector<std::pair<float, glm::vec3>> rotations;
+
+    std::vector<bool> to_update;
 
     explicit RectanglesDemo(std::shared_ptr<ao::vulkan::EngineSettings> settings)
         : ao::vulkan::GLFWEngine(settings),
@@ -53,6 +55,7 @@ class RectanglesDemo : public virtual ao::vulkan::GLFWEngine {
     void createPipelines() override;
     void createVulkanBuffers() override;
     void createSecondaryCommandBuffers() override;
-    void executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex, vk::CommandBuffer primaryCmd) override;
+    void executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritance_info, int frame_index,
+                                        vk::CommandBuffer primary_command) override;
     void beforeCommandBuffersUpdate() override;
 };

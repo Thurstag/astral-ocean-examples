@@ -39,6 +39,8 @@ class ModelDemo : public virtual ao::vulkan::GLFWEngine {
 
     std::vector<UniformBufferObject> uniform_buffers;
 
+    std::map<vk::CommandBuffer, bool> to_update;
+
     explicit ModelDemo(std::shared_ptr<ao::vulkan::EngineSettings> settings) : ao::vulkan::GLFWEngine(settings), ao::vulkan::Engine(settings){};
     virtual ~ModelDemo() = default;
 
@@ -47,6 +49,7 @@ class ModelDemo : public virtual ao::vulkan::GLFWEngine {
     void createPipelines() override;
     void createVulkanBuffers() override;
     void createSecondaryCommandBuffers() override;
-    void executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex, vk::CommandBuffer primaryCmd) override;
+    void executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritance_info, int frame_index,
+                                        vk::CommandBuffer primary_command) override;
     void beforeCommandBuffersUpdate() override;
 };

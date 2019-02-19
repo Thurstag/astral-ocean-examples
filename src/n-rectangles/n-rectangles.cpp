@@ -41,14 +41,14 @@ vk::RenderPass RectanglesDemo::createRenderPass() {
         .setFinalLayout(vk::ImageLayout::eDepthStencilAttachmentOptimal);
 
     // Define references
-    vk::AttachmentReference colorReference = vk::AttachmentReference(0, vk::ImageLayout::eColorAttachmentOptimal);
-    vk::AttachmentReference depthReference = vk::AttachmentReference(1, vk::ImageLayout::eDepthStencilAttachmentOptimal);
+    vk::AttachmentReference color_ref = vk::AttachmentReference(0, vk::ImageLayout::eColorAttachmentOptimal);
+    vk::AttachmentReference depth_ref = vk::AttachmentReference(1, vk::ImageLayout::eDepthStencilAttachmentOptimal);
 
     vk::SubpassDescription subpass = vk::SubpassDescription()
                                          .setPipelineBindPoint(vk::PipelineBindPoint::eGraphics)
                                          .setColorAttachmentCount(1)
-                                         .setPColorAttachments(&colorReference)
-                                         .setPDepthStencilAttachment(&depthReference);
+                                         .setPColorAttachments(&color_ref)
+                                         .setPDepthStencilAttachment(&depth_ref);
     vk::SubpassDependency dependency = vk::SubpassDependency()
                                            .setSrcSubpass(VK_SUBPASS_EXTERNAL)
                                            .setDstSubpass(0)
@@ -156,12 +156,12 @@ void RectanglesDemo::createPipelines() {
 
     /* DESCRIPTOR POOL PART */
 
-    std::array<vk::DescriptorPoolSize, 1> poolSizes;
-    poolSizes[0] = vk::DescriptorPoolSize(vk::DescriptorType::eUniformBuffer, static_cast<u32>(this->swapchain->size()));
+    std::array<vk::DescriptorPoolSize, 1> pool_sizes;
+    pool_sizes[0] = vk::DescriptorPoolSize(vk::DescriptorType::eUniformBuffer, static_cast<u32>(this->swapchain->size()));
 
     this->pipelines["main"]->pools().push_back(ao::vulkan::DescriptorPool(
         this->device, vk::DescriptorPoolCreateInfo(vk::DescriptorPoolCreateFlags(), static_cast<u32>(this->swapchain->size() * RECTANGLE_COUNT),
-                                                   static_cast<u32>(poolSizes.size()), poolSizes.data())));
+                                                   static_cast<u32>(pool_sizes.size()), pool_sizes.data())));
 }
 
 void RectanglesDemo::createVulkanBuffers() {
@@ -195,54 +195,70 @@ void RectanglesDemo::createVulkanBuffers() {
 
     // Configure
     for (size_t i = 0; i < this->swapchain->size() * RECTANGLE_COUNT; i++) {
-        vk::DescriptorBufferInfo bufferInfo(this->ubo_buffer->buffer(), this->ubo_buffer->offset(i), sizeof(UniformBufferObject));
+        vk::DescriptorBufferInfo buffer_info(this->ubo_buffer->buffer(), this->ubo_buffer->offset(i), sizeof(UniformBufferObject));
+
         this->device->logical.updateDescriptorSets(
-            vk::WriteDescriptorSet(descriptor_sets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &bufferInfo), {});
+            vk::WriteDescriptorSet(descriptor_sets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &buffer_info), {});
     }
 }
 
 void RectanglesDemo::createSecondaryCommandBuffers() {
     this->command_buffers = this->secondary_command_pool->allocateCommandBuffers(vk::CommandBufferLevel::eSecondary,
                                                                                  static_cast<u32>(RECTANGLE_COUNT * this->swapchain->size()));
+
+    this->to_update = std::vector(this->swapchain->size(), true);
+    this->sub_commands.resize(this->swapchain->size());
 }
 
-void RectanglesDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritanceInfo, int frameIndex, vk::CommandBuffer primaryCmd) {
-    // Create info
-    vk::CommandBufferBeginInfo beginInfo =
-        vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eRenderPassContinue).setPInheritanceInfo(&inheritanceInfo);
+void RectanglesDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritance_info, int frame_index,
+                                                    vk::CommandBuffer primary_command) {
+    // Reset all command buffers
+    if (this->swapchain->state() == ao::vulkan::SwapchainState::eReset) {
+        for (auto& index : this->to_update) {
+            index = true;
+        }
+    }
 
     // Draw in commands
-    auto range = boost::irange<u64>(0, RECTANGLE_COUNT);
-    std::for_each(std::execution::par_unseq, range.begin(), range.end(), [&](auto i) {
-        auto commandBuffer = this->command_buffers[(i * this->swapchain->size()) + frameIndex];
+    if (this->to_update[frame_index]) {
+        // Begin info
+        vk::CommandBufferBeginInfo begin_info =
+            vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eRenderPassContinue).setPInheritanceInfo(&inheritance_info);
 
-        commandBuffer.begin(beginInfo);
-        {
-            // Set viewport & scissor
-            commandBuffer.setViewport(0, vk::Viewport(0, 0, static_cast<float>(this->swapchain->extent().width),
-                                                      static_cast<float>(this->swapchain->extent().height), 0, 1));
-            commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(), this->swapchain->extent()));
+        auto range = boost::irange<u64>(0, RECTANGLE_COUNT);
+        std::for_each(std::execution::par_unseq, range.begin(), range.end(), [&](auto i) {
+            auto command_buffer = this->command_buffers[(i * this->swapchain->size()) + frame_index];
 
-            // Bind pipeline
-            commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, this->pipelines["main"]->value());
+            command_buffer.begin(begin_info);
+            {
+                // Set viewport & scissor
+                command_buffer.setViewport(0, vk::Viewport(0, 0, static_cast<float>(this->swapchain->extent().width),
+                                                           static_cast<float>(this->swapchain->extent().height), 0, 1));
+                command_buffer.setScissor(0, vk::Rect2D(vk::Offset2D(), this->swapchain->extent()));
 
-            // Draw rectangle
-            commandBuffer.bindVertexBuffers(0, this->object_buffer->buffer(), {0});
-            commandBuffer.bindIndexBuffer(this->object_buffer->buffer(), this->object_buffer->offset(1), vk::IndexType::eUint16);
-            commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->pipelines["main"]->layout()->value(), 0,
-                                             this->pipelines["main"]->pools().front().descriptorSets()[(i * this->swapchain->size()) + frameIndex],
-                                             {});
+                // Bind pipeline
+                command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, this->pipelines["main"]->value());
 
-            commandBuffer.drawIndexed(static_cast<u32>(this->indices.size()), 1, 0, 0, 0);
-        }
-        commandBuffer.end();
+                // Draw rectangle
+                command_buffer.bindVertexBuffers(0, this->object_buffer->buffer(), {0});
+                command_buffer.bindIndexBuffer(this->object_buffer->buffer(), this->object_buffer->offset(1), vk::IndexType::eUint16);
+                command_buffer.bindDescriptorSets(
+                    vk::PipelineBindPoint::eGraphics, this->pipelines["main"]->layout()->value(), 0,
+                    this->pipelines["main"]->pools().front().descriptorSets()[(i * this->swapchain->size()) + frame_index], {});
 
-        // Pass to primary
-        sub_commands[i] = commandBuffer;
-    });
+                command_buffer.drawIndexed(static_cast<u32>(this->indices.size()), 1, 0, 0, 0);
+            }
+            command_buffer.end();
+
+            // Pass to primary
+            sub_commands[frame_index][i] = command_buffer;
+        });
+
+        this->to_update[frame_index] = false;
+    }
 
     // Pass to primary
-    primaryCmd.executeCommands(sub_commands);
+    primary_command.executeCommands(this->sub_commands[frame_index]);
 }
 
 void RectanglesDemo::beforeCommandBuffersUpdate() {
@@ -250,27 +266,30 @@ void RectanglesDemo::beforeCommandBuffersUpdate() {
         this->clock = std::chrono::system_clock::now();
         this->clock_start = true;
 
-        // Generate vector of rotations
+        // Generate vector of rotations & init uniform buffers
         std::srand(std::time(nullptr));
         this->rotations.resize(RECTANGLE_COUNT);
         for (size_t i = 0; i < RECTANGLE_COUNT; i++) {
             this->rotations[i] = std::make_pair(static_cast<float>((std::rand() % (180 - 10)) + 10), glm::vec3(0.f, 1.0f, 1.0f));
+
+            for (size_t j = 0; j < this->swapchain->size(); j++) {
+                this->uniform_buffers[(i * this->swapchain->size()) + j].view =
+                    glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+            }
         }
 
         return;
     }
 
     // Delta time
-    float deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(std::chrono::system_clock::now() - this->clock).count();
+    float delta_time = std::chrono::duration<float, std::chrono::seconds::period>(std::chrono::system_clock::now() - this->clock).count();
 
     // Update uniform buffers
     auto range = boost::irange<u64>(0, RECTANGLE_COUNT);
     std::for_each(std::execution::par_unseq, range.begin(), range.end(), [&](auto i) {
         this->uniform_buffers[(i * this->swapchain->size()) + this->swapchain->currentFrameIndex()].rotation =
-            glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(this->rotations[i].first), this->rotations[i].second);
-        this->uniform_buffers[(i * this->swapchain->size()) + this->swapchain->currentFrameIndex()].scale = (0.25f * glm::cos(deltaTime)) + 0.75f;
-        this->uniform_buffers[(i * this->swapchain->size()) + this->swapchain->currentFrameIndex()].view =
-            glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+            glm::rotate(glm::mat4(1.0f), delta_time * glm::radians(this->rotations[i].first), this->rotations[i].second);
+        this->uniform_buffers[(i * this->swapchain->size()) + this->swapchain->currentFrameIndex()].scale = (0.25f * glm::cos(delta_time)) + 0.75f;
         this->uniform_buffers[(i * this->swapchain->size()) + this->swapchain->currentFrameIndex()].proj = glm::perspective(
             glm::radians(45.0f), this->swapchain->extent().width / static_cast<float>(this->swapchain->extent().height), 0.1f, 10.0f);
         this->uniform_buffers[(i * this->swapchain->size()) + this->swapchain->currentFrameIndex()].proj[1][1] *= -1;  // Adapt for vulkan
