@@ -12,8 +12,8 @@
 
 #include <ao/vulkan/utilities/settings.h>
 #include <ao/vulkan/wrapper/shader_module.h>
-#include <ao/vulkan/wrapper/buffer/array/basic_buffer.hpp>
-#include <ao/vulkan/wrapper/buffer/tuple/staging_buffer.hpp>
+#include <ao/vulkan/buffer/array/basic_buffer.hpp>
+#include <ao/vulkan/buffer/tuple/staging_buffer.hpp>
 #include <glm/gtx/rotate_vector.hpp>
 #include <glm/gtx/string_cast.hpp>
 #include <vulkan/vulkan.hpp>

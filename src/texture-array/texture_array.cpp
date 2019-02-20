@@ -4,7 +4,7 @@
 
 #include "texture_array.h"
 
-#include <ao/vulkan/wrapper/pipeline/graphics_pipeline.h>
+#include <ao/vulkan/pipeline/graphics_pipeline.h>
 #include <boost/filesystem.hpp>
 #include <gli/gli.hpp>
 
@@ -12,7 +12,7 @@ void TextureArrayDemo::onKeyEventCallback(GLFWwindow* window, int key, int scanc
     ao::vulkan::GLFWEngine::onKeyEventCallback(window, key, scancode, action, mods);
     bool changed = false;
 
-    if (key == GLFW_KEY_DOWN && action == GLFW_PRESS) {  // DOWN
+    if (key == GLFW_KEY_UP && action == GLFW_PRESS) {  // UP
         this->array_level_index--;
         if (this->array_level_index > this->array_levels) {
             this->array_level_index = 0;
@@ -20,7 +20,7 @@ void TextureArrayDemo::onKeyEventCallback(GLFWwindow* window, int key, int scanc
 
         this->LOGGER << ao::core::Logger::Level::debug << fmt::format("Base array index: {}", array_level_index);
         changed = true;
-    } else if (key == GLFW_KEY_UP && action == GLFW_PRESS) {  // UP
+    } else if (key == GLFW_KEY_DOWN && action == GLFW_PRESS) {  // DOWN
         this->array_level_index++;
         this->array_level_index = std::min<u32>(this->array_level_index, this->array_levels - INSTANCE_COUNT);
 
@@ -385,10 +385,10 @@ void TextureArrayDemo::beforeCommandBuffersUpdate() {
     }
 
     // Update uniform buffer
-    this->uniform_buffers[this->swapchain->currentFrameIndex()].proj =
+    this->uniform_buffers[this->swapchain->frameIndex()].proj =
         glm::perspective(glm::radians(45.0f), this->swapchain->extent().width / (float)this->swapchain->extent().height, 0.1f, 10.0f);
-    this->uniform_buffers[this->swapchain->currentFrameIndex()].proj[1][1] *= -1;  // Adapt for vulkan
+    this->uniform_buffers[this->swapchain->frameIndex()].proj[1][1] *= -1;  // Adapt for vulkan
 
     // Update buffer
-    this->ubo_buffer->updateFragment(this->swapchain->currentFrameIndex(), &this->uniform_buffers[this->swapchain->currentFrameIndex()]);
+    this->ubo_buffer->updateFragment(this->swapchain->frameIndex(), &this->uniform_buffers[this->swapchain->frameIndex()]);
 }

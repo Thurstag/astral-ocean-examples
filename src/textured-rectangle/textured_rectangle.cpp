@@ -4,8 +4,7 @@
 
 #include "textured_rectangle.h"
 
-#define STB_IMAGE_IMPLEMENTATION
-#include <ao/vulkan/wrapper/pipeline/graphics_pipeline.h>
+#include <ao/vulkan/pipeline/graphics_pipeline.h>
 #include <stb_image.h>
 
 void TexturedRectangle::freeVulkan() {
@@ -319,12 +318,12 @@ void TexturedRectangle::beforeCommandBuffersUpdate() {
     float delta_time = std::chrono::duration<float, std::chrono::seconds::period>(std::chrono::system_clock::now() - this->clock).count();
 
     // Update uniform buffer
-    this->uniform_buffers[this->swapchain->currentFrameIndex()].rotation =
+    this->uniform_buffers[this->swapchain->frameIndex()].rotation =
         glm::rotate(glm::mat4(1.0f), delta_time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    this->uniform_buffers[this->swapchain->currentFrameIndex()].proj =
+    this->uniform_buffers[this->swapchain->frameIndex()].proj =
         glm::perspective(glm::radians(45.0f), this->swapchain->extent().width / (float)this->swapchain->extent().height, 0.1f, 10.0f);
-    this->uniform_buffers[this->swapchain->currentFrameIndex()].proj[1][1] *= -1;  // Adapt for vulkan
+    this->uniform_buffers[this->swapchain->frameIndex()].proj[1][1] *= -1;  // Adapt for vulkan
 
     // Update buffer
-    this->ubo_buffer->updateFragment(this->swapchain->currentFrameIndex(), &this->uniform_buffers[this->swapchain->currentFrameIndex()]);
+    this->ubo_buffer->updateFragment(this->swapchain->frameIndex(), &this->uniform_buffers[this->swapchain->frameIndex()]);
 }

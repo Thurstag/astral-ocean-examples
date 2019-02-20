@@ -4,7 +4,7 @@
 
 #include "triangle.h"
 
-#include <ao/vulkan/wrapper/pipeline/graphics_pipeline.h>
+#include <ao/vulkan/pipeline/graphics_pipeline.h>
 
 void TriangleDemo::freeVulkan() {
     this->vertices_buffer.reset();

@@ -6,7 +6,7 @@
 
 #include <execution>
 
-#include <ao/vulkan/wrapper/pipeline/graphics_pipeline.h>
+#include <ao/vulkan/pipeline/graphics_pipeline.h>
 #include <meshoptimizer.h>
 #include <objparser.h>
 #include <boost/filesystem.hpp>
@@ -503,14 +503,14 @@ void MipmapDemo::beforeCommandBuffersUpdate() {
     std::get<0>(this->camera) = glm::vec3(glm::rotate(glm::mat4(1.0f), rotation, angles) * glm::vec4(std::get<0>(this->camera), 0.0f));
 
     // Update uniform buffer
-    this->uniform_buffers[this->swapchain->currentFrameIndex()].view = glm::lookAt(
+    this->uniform_buffers[this->swapchain->frameIndex()].view = glm::lookAt(
         std::get<0>(this->camera) - (std::get<0>(this->camera) * std::get<3>(this->camera)), glm::vec3(.0f, .0f, .0f), glm::vec3(.0f, .0f, 1.0f));
-    this->uniform_buffers[this->swapchain->currentFrameIndex()].proj =
+    this->uniform_buffers[this->swapchain->frameIndex()].proj =
         glm::perspective(glm::radians(45.0f), this->swapchain->extent().width / (float)this->swapchain->extent().height, 0.1f, 10000.0f);
-    this->uniform_buffers[this->swapchain->currentFrameIndex()].proj[1][1] *= -1;  // Adapt for vulkan
+    this->uniform_buffers[this->swapchain->frameIndex()].proj[1][1] *= -1;  // Adapt for vulkan
 
     // Update buffer
-    this->ubo_buffer->updateFragment(this->swapchain->currentFrameIndex(), &this->uniform_buffers[this->swapchain->currentFrameIndex()]);
+    this->ubo_buffer->updateFragment(this->swapchain->frameIndex(), &this->uniform_buffers[this->swapchain->frameIndex()]);
 
     // Update clock
     this->clock = std::chrono::system_clock::now();

@@ -8,6 +8,8 @@
 
 #include <fmt/format.h>
 #include <boost/filesystem.hpp>
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
 
 #include "metrics/counter_metric.hpp"
 #include "metrics/duration_metric.hpp"
@@ -72,6 +74,12 @@ void ao::vulkan::GLFWEngine::initWindow() {
                                     static_cast<int>(this->settings_->get<u64>(ao::vulkan::settings::WindowHeight)),
                                     this->settings_->get<std::string>(ao::vulkan::settings::WindowTitle).c_str(), nullptr, nullptr);
     glfwSetWindowUserPointer(this->window, this);
+
+    // Set icon
+    std::array<GLFWimage, 1> icons;
+    icons.front().pixels = stbi_load("assets/icons/logo.png", &icons.front().width, &icons.front().height, nullptr, STBI_rgb_alpha);
+    glfwSetWindowIcon(this->window, icons.size(), icons.data());
+    stbi_image_free(icons.front().pixels);
 
     // Define buffer resize callback
     glfwSetFramebufferSizeCallback(this->window, ao::vulkan::GLFWEngine::OnFramebufferSizeCallback);
@@ -201,7 +209,7 @@ void ao::vulkan::GLFWEngine::updateCommandBuffers() {
         inheritanceInfo.setPipelineStatistics(vk::QueryPipelineStatisticFlagBits::eClippingInvocations);
 
         // Execute secondary command buffers
-        this->executeSecondaryCommandBuffers(inheritanceInfo, this->swapchain->currentFrameIndex(), command);
+        this->executeSecondaryCommandBuffers(inheritanceInfo, this->swapchain->frameIndex(), command);
     }
     command.endRenderPass();
 

@@ -6,7 +6,7 @@
 
 #include <execution>
 
-#include <ao/vulkan/wrapper/pipeline/graphics_pipeline.h>
+#include <ao/vulkan/pipeline/graphics_pipeline.h>
 #include <boost/range/irange.hpp>
 
 void InstancingDemo::freeVulkan() {
@@ -277,15 +277,15 @@ void InstancingDemo::beforeCommandBuffersUpdate() {
     // Update uniform buffer
     auto range = boost::irange<u64>(0, INSTANCE_COUNT);
     std::for_each(std::execution::par_unseq, range.begin(), range.end(), [&](auto i) {
-        this->uniform_buffers[this->swapchain->currentFrameIndex()].instances[i].rotation =
+        this->uniform_buffers[this->swapchain->frameIndex()].instances[i].rotation =
             glm::rotate(glm::mat4(1.0f), delta_time * glm::radians(this->rotations[i]), glm::vec3(.0f, 1.0f, 1.0f));
-        this->uniform_buffers[this->swapchain->currentFrameIndex()].instances[i].positionAndScale.w = (0.25f * glm::cos(delta_time)) + 0.75f;
+        this->uniform_buffers[this->swapchain->frameIndex()].instances[i].positionAndScale.w = (0.25f * glm::cos(delta_time)) + 0.75f;
     });
 
-    this->uniform_buffers[this->swapchain->currentFrameIndex()].proj =
+    this->uniform_buffers[this->swapchain->frameIndex()].proj =
         glm::perspective(glm::radians(45.0f), this->swapchain->extent().width / (float)this->swapchain->extent().height, 0.1f, 10.0f);
-    this->uniform_buffers[this->swapchain->currentFrameIndex()].proj[1][1] *= -1;  // Adapt for vulkan
+    this->uniform_buffers[this->swapchain->frameIndex()].proj[1][1] *= -1;  // Adapt for vulkan
 
     // Update buffer
-    this->ubo_buffer->updateFragment(this->swapchain->currentFrameIndex(), &this->uniform_buffers[this->swapchain->currentFrameIndex()]);
+    this->ubo_buffer->updateFragment(this->swapchain->frameIndex(), &this->uniform_buffers[this->swapchain->frameIndex()]);
 }
