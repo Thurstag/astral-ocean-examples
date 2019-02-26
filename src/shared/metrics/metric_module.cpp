@@ -4,16 +4,13 @@
 
 #include "metric_module.h"
 
-#include <ao/core/utilities/pointers.h>
 #include <boost/algorithm/string/join.hpp>
 
-ao::vulkan::MetricModule::MetricModule(std::weak_ptr<Device> device) : device(device) {
-    auto _device = ao::core::shared(this->device);
-
+ao::vulkan::MetricModule::MetricModule(std::shared_ptr<Device> device) : device(device) {
     // Create query pool
     this->timestamp_query_pool =
-        _device->logical.createQueryPool(vk::QueryPoolCreateInfo(vk::QueryPoolCreateFlags(), vk::QueryType::eTimestamp, 128));
-    this->triangle_query_pool = _device->logical.createQueryPool(vk::QueryPoolCreateInfo(
+        this->device->logical()->createQueryPool(vk::QueryPoolCreateInfo(vk::QueryPoolCreateFlags(), vk::QueryType::eTimestamp, 128));
+    this->triangle_query_pool = this->device->logical()->createQueryPool(vk::QueryPoolCreateInfo(
         vk::QueryPoolCreateFlags(), vk::QueryType::ePipelineStatistics, 4, vk::QueryPipelineStatisticFlagBits::eClippingInvocations));
 }
 
@@ -23,8 +20,8 @@ ao::vulkan::MetricModule::~MetricModule() {
     }
     this->metrics.clear();
 
-    ao::core::shared(this->device)->logical.destroyQueryPool(this->timestamp_query_pool);
-    ao::core::shared(this->device)->logical.destroyQueryPool(this->triangle_query_pool);
+    this->device->logical()->destroyQueryPool(this->timestamp_query_pool);
+    this->device->logical()->destroyQueryPool(this->triangle_query_pool);
 }
 
 ao::vulkan::Metric* ao::vulkan::MetricModule::operator[](std::string name) {

@@ -9,7 +9,7 @@
 #include <algorithm>
 #include <vector>
 
-#include <ao/vulkan/utilities/settings.h>
+#include <ao/vulkan/engine/settings.h>
 #include <ao/vulkan/wrapper/shader_module.h>
 #include <ao/vulkan/buffer/tuple/staging_buffer.hpp>
 #include <glm/glm.hpp>

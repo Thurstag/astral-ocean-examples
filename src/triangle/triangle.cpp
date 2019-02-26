@@ -17,7 +17,7 @@ vk::RenderPass TriangleDemo::createRenderPass() {
     // Define attachments
     std::array<vk::AttachmentDescription, 1> attachments;
     attachments[0]
-        .setFormat(this->swapchain->colorFormat())
+        .setFormat(this->swapchain->surfaceColorFormat())
         .setSamples(vk::SampleCountFlagBits::e1)
         .setLoadOp(vk::AttachmentLoadOp::eClear)
         .setStoreOp(vk::AttachmentStoreOp::eStore)
@@ -41,13 +41,13 @@ vk::RenderPass TriangleDemo::createRenderPass() {
                                            .setDstAccessMask(vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite);
 
     // Create render pass
-    return this->device->logical.createRenderPass(
+    return this->device->logical()->createRenderPass(
         vk::RenderPassCreateInfo(vk::RenderPassCreateFlags(), static_cast<u32>(attachments.size()), attachments.data(), 1, &subpass, 1, &dependency));
 }
 
 void TriangleDemo::createPipelines() {
     // Create shadermodules
-    ao::vulkan::ShaderModule module(this->device);
+    ao::vulkan::ShaderModule module(this->device->logical());
 
     // Load shaders & get shaderStages
     std::vector<vk::PipelineShaderStageCreateInfo> shader_stages =
@@ -113,14 +113,15 @@ void TriangleDemo::createPipelines() {
     vk::PipelineCacheCreateInfo cache_info(vk::PipelineCacheCreateFlags(), cache.size(), cache.data());
 
     // Create rendering pipeline using the specified states
-    this->pipelines["main"] = new ao::vulkan::GraphicsPipeline(
-        this->device, std::make_shared<ao::vulkan::PipelineLayout>(this->device), this->render_pass, shader_stages, vertex_state, input_state,
-        std::nullopt, viewport_state, rasterization_state, multisample_state, depth_stencil_state, color_state, dynamic_state, cache_info);
+    this->pipelines["main"] =
+        new ao::vulkan::GraphicsPipeline(this->device->logical(), std::make_shared<ao::vulkan::PipelineLayout>(this->device->logical()),
+                                         this->render_pass, shader_stages, vertex_state, input_state, std::nullopt, viewport_state,
+                                         rasterization_state, multisample_state, depth_stencil_state, color_state, dynamic_state, cache_info);
 
     // Define callback
-    auto device = this->device;
-    this->pipelines.setBeforePipelineCacheDestruction(
-        [this, device](std::string name, vk::PipelineCache cache) { this->saveCache("data/triangle/caches", name + std::string(".cache"), cache); });
+    this->pipelines.setBeforePipelineCacheDestruction([this, device = this->device](std::string name, vk::PipelineCache cache) {
+        this->saveCache("data/triangle/caches", name + std::string(".cache"), cache);
+    });
 }
 
 void TriangleDemo::createVulkanBuffers() {
@@ -172,8 +173,8 @@ void TriangleDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceIn
 
             // Memory barrier
             vk::BufferMemoryBarrier barrier(vk::AccessFlags(), vk::AccessFlagBits::eVertexAttributeRead,
-                                            this->device->queues->at(vk::to_string(vk::QueueFlagBits::eTransfer)).family_index,
-                                            this->device->queues->at(vk::to_string(vk::QueueFlagBits::eGraphics)).family_index,
+                                            this->device->queues()->at(vk::to_string(vk::QueueFlagBits::eTransfer)).family_index,
+                                            this->device->queues()->at(vk::to_string(vk::QueueFlagBits::eGraphics)).family_index,
                                             this->vertices_buffer->buffer());
             command_buffer.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eVertexInput, vk::DependencyFlags(), {},
                                            barrier, {});

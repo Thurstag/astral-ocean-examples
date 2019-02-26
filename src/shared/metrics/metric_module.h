@@ -24,7 +24,7 @@ namespace ao::vulkan {
          *
          * @param device Device
          */
-        explicit MetricModule(std::weak_ptr<Device> device);
+        explicit MetricModule(std::shared_ptr<Device> device);
 
         /**
          * @brief Destroy the MetricModule object
@@ -80,6 +80,6 @@ namespace ao::vulkan {
 
         vk::QueryPool timestamp_query_pool;
         vk::QueryPool triangle_query_pool;
-        std::weak_ptr<Device> device;
+        std::shared_ptr<Device> device;
     };
 }  // namespace ao::vulkan

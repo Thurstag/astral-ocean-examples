@@ -20,7 +20,7 @@ vk::RenderPass InstancingDemo::createRenderPass() {
     // Define attachments
     std::array<vk::AttachmentDescription, 2> attachments;
     attachments[0]
-        .setFormat(this->swapchain->colorFormat())
+        .setFormat(this->swapchain->surfaceColorFormat())
         .setSamples(vk::SampleCountFlagBits::e1)
         .setLoadOp(vk::AttachmentLoadOp::eClear)
         .setStoreOp(vk::AttachmentStoreOp::eStore)
@@ -29,7 +29,7 @@ vk::RenderPass InstancingDemo::createRenderPass() {
         .setInitialLayout(vk::ImageLayout::eUndefined)
         .setFinalLayout(vk::ImageLayout::ePresentSrcKHR);
     attachments[1]
-        .setFormat(this->device->depth_format)
+        .setFormat(ao::vulkan::utilities::bestDepthStencilFormat(this->device->physical()))
         .setSamples(vk::SampleCountFlagBits::e1)
         .setLoadOp(vk::AttachmentLoadOp::eClear)
         .setStoreOp(vk::AttachmentStoreOp::eDontCare)
@@ -55,7 +55,7 @@ vk::RenderPass InstancingDemo::createRenderPass() {
                                            .setDstAccessMask(vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite);
 
     // Create render pass
-    return this->device->logical.createRenderPass(
+    return this->device->logical()->createRenderPass(
         vk::RenderPassCreateInfo(vk::RenderPassCreateFlags(), static_cast<u32>(attachments.size()), attachments.data(), 1, &subpass, 1, &dependency));
 }
 
@@ -68,15 +68,15 @@ void InstancingDemo::createPipelines() {
 
     // Create layout
     std::vector<vk::DescriptorSetLayout> descriptor_set_layouts;
-    descriptor_set_layouts.push_back(this->device->logical.createDescriptorSetLayout(
+    descriptor_set_layouts.push_back(this->device->logical()->createDescriptorSetLayout(
         vk::DescriptorSetLayoutCreateInfo(vk::DescriptorSetLayoutCreateFlags(), static_cast<u32>(bindings.size()), bindings.data())));
 
-    auto pipeline_layout = std::make_shared<ao::vulkan::PipelineLayout>(this->device, descriptor_set_layouts);
+    auto pipeline_layout = std::make_shared<ao::vulkan::PipelineLayout>(this->device->logical(), descriptor_set_layouts);
 
     /* PIPELINE PART */
 
     // Create shadermodules
-    ao::vulkan::ShaderModule module(this->device);
+    ao::vulkan::ShaderModule module(this->device->logical());
 
     // Load shaders & get shaderStages
     std::vector<vk::PipelineShaderStageCreateInfo> shader_stages =
@@ -142,13 +142,12 @@ void InstancingDemo::createPipelines() {
     vk::PipelineCacheCreateInfo cache_info(vk::PipelineCacheCreateFlags(), cache.size(), cache.data());
 
     // Create rendering pipeline using the specified states
-    this->pipelines["main"] = new ao::vulkan::GraphicsPipeline(this->device, pipeline_layout, this->render_pass, shader_stages, vertex_state,
-                                                               input_state, std::nullopt, viewport_state, rasterization_state, multisample_state,
-                                                               depth_stencil_state, color_state, dynamic_state, cache_info);
+    this->pipelines["main"] = new ao::vulkan::GraphicsPipeline(this->device->logical(), pipeline_layout, this->render_pass, shader_stages,
+                                                               vertex_state, input_state, std::nullopt, viewport_state, rasterization_state,
+                                                               multisample_state, depth_stencil_state, color_state, dynamic_state, cache_info);
 
     // Define callback
-    auto device = this->device;
-    this->pipelines.setBeforePipelineCacheDestruction([this, device](std::string name, vk::PipelineCache cache) {
+    this->pipelines.setBeforePipelineCacheDestruction([this, device = this->device](std::string name, vk::PipelineCache cache) {
         this->saveCache("data/instancing/caches", name + std::string(".cache"), cache);
     });
 
@@ -158,8 +157,8 @@ void InstancingDemo::createPipelines() {
     pool_sizes[0] = vk::DescriptorPoolSize(vk::DescriptorType::eUniformBuffer, static_cast<u32>(this->swapchain->size()));
 
     this->pipelines["main"]->pools().push_back(ao::vulkan::DescriptorPool(
-        this->device, vk::DescriptorPoolCreateInfo(vk::DescriptorPoolCreateFlags(), static_cast<u32>(this->swapchain->size()),
-                                                   static_cast<u32>(pool_sizes.size()), pool_sizes.data())));
+        this->device->logical(), vk::DescriptorPoolCreateInfo(vk::DescriptorPoolCreateFlags(), static_cast<u32>(this->swapchain->size()),
+                                                              static_cast<u32>(pool_sizes.size()), pool_sizes.data())));
 }
 
 void InstancingDemo::createVulkanBuffers() {
@@ -172,7 +171,7 @@ void InstancingDemo::createVulkanBuffers() {
 
     this->ubo_buffer = std::make_unique<ao::vulkan::BasicDynamicArrayBuffer<UBO>>(this->swapchain->size(), this->device);
     this->ubo_buffer->init(vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, vk::MemoryPropertyFlagBits::eHostVisible,
-                           ao::vulkan::Buffer::CalculateUBOAligmentSize(this->device->physical, sizeof(UBO)));
+                           ao::vulkan::Buffer::CalculateUBOAligmentSize(this->device->physical(), sizeof(UBO)));
 
     // Map buffer
     this->ubo_buffer->map();
@@ -192,7 +191,7 @@ void InstancingDemo::createVulkanBuffers() {
     for (size_t i = 0; i < this->swapchain->size(); i++) {
         vk::DescriptorBufferInfo buffer_info(this->ubo_buffer->buffer(), this->ubo_buffer->offset(i), sizeof(UBO));
 
-        this->device->logical.updateDescriptorSets(
+        this->device->logical()->updateDescriptorSets(
             vk::WriteDescriptorSet(descriptor_sets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &buffer_info), {});
     }
 }

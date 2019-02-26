@@ -15,7 +15,7 @@
 #    endif
 #endif
 
-#include <ao/vulkan/engine.h>
+#include <ao/vulkan/engine/engine.h>
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 

@@ -80,7 +80,7 @@ namespace ao::vulkan {
     template<class Period, class Type, size_t Index = 0>
     class CounterCommandBufferMetric : public CounterMetric<Period, Type> {
        public:
-        CounterCommandBufferMetric(Type default, std::pair<std::weak_ptr<ao::vulkan::Device>, vk::QueryPool> module)
+        CounterCommandBufferMetric(Type default, std::pair<std::shared_ptr<ao::vulkan::Device>, vk::QueryPool> module)
             : CounterMetric(default), module(module) {}
 
         void increment() = delete;
@@ -89,10 +89,10 @@ namespace ao::vulkan {
             u64 result;
 
             // Get results
-            ao::vulkan::utilities::vkAssert(ao::core::shared(this->module.first)
-                                                ->logical.getQueryPoolResults(this->module.second, Index, 1, sizeof(u64), &result, sizeof(u64),
-                                                                              vk::QueryResultFlagBits::e64 | vk::QueryResultFlagBits::eWait),
-                                            "Fail to get query results");
+            ao::vulkan::utilities::vkAssert(
+                this->module.first->logical()->getQueryPoolResults(this->module.second, Index, 1, sizeof(u64), &result, sizeof(u64),
+                                                                   vk::QueryResultFlagBits::e64 | vk::QueryResultFlagBits::eWait),
+                "Fail to get query results");
 
             this->count += result;
         }
@@ -109,6 +109,6 @@ namespace ao::vulkan {
         }
 
        private:
-        std::pair<std::weak_ptr<ao::vulkan::Device>, vk::QueryPool> module;
+        std::pair<std::shared_ptr<ao::vulkan::Device>, vk::QueryPool> module;
     };
 }  // namespace ao::vulkan

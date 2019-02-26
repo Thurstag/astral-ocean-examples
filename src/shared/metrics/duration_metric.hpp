@@ -7,7 +7,6 @@
 #include <string>
 #include <type_traits>
 
-#include <ao/core/utilities/pointers.h>
 #include <ao/vulkan/utilities/vulkan.h>
 #include <ao/vulkan/wrapper/device.h>
 #include <vulkan/vulkan.hpp>
@@ -110,9 +109,9 @@ namespace ao::vulkan {
          * @param unit
          * @param module
          */
-        DurationCommandBufferMetric(std::string unit, std::pair<std::weak_ptr<ao::vulkan::Device>, vk::QueryPool> module)
+        DurationCommandBufferMetric(std::string unit, std::pair<std::shared_ptr<ao::vulkan::Device>, vk::QueryPool> module)
             : DurationMetric(unit), module(module) {
-            this->period = ao::core::shared(this->module.first)->physical.getProperties().limits.timestampPeriod;
+            this->period = this->module.first->physical().getProperties().limits.timestampPeriod;
         };
 
         /**
@@ -132,9 +131,8 @@ namespace ao::vulkan {
 
             // Get results
             ao::vulkan::utilities::vkAssert(
-                ao::core::shared(this->module.first)
-                    ->logical.getQueryPoolResults(this->module.second, Index, 2, results.size() * sizeof(u64), results.data(), sizeof(u64),
-                                                  vk::QueryResultFlagBits::e64 | vk::QueryResultFlagBits::eWait),
+                this->module.first->logical()->getQueryPoolResults(this->module.second, Index, 2, results.size() * sizeof(u64), results.data(),
+                                                                   sizeof(u64), vk::QueryResultFlagBits::e64 | vk::QueryResultFlagBits::eWait),
                 "Fail to get query results");
 
             return fmt::format("{:.{}f} {}", (static_cast<double>(results[1]) - results[0]) * this->period / (std::nano::den / Period::den),
@@ -142,7 +140,7 @@ namespace ao::vulkan {
         }
 
        private:
-        std::pair<std::weak_ptr<ao::vulkan::Device>, vk::QueryPool> module;
+        std::pair<std::shared_ptr<ao::vulkan::Device>, vk::QueryPool> module;
         float period;
     };
 }  // namespace ao::vulkan

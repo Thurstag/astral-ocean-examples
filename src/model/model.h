@@ -9,7 +9,7 @@
 
 #define GLM_ENABLE_EXPERIMENTAL
 
-#include <ao/vulkan/utilities/settings.h>
+#include <ao/vulkan/engine/settings.h>
 #include <ao/vulkan/wrapper/shader_module.h>
 #include <ao/vulkan/buffer/array/basic_buffer.hpp>
 #include <ao/vulkan/buffer/tuple/staging_buffer.hpp>

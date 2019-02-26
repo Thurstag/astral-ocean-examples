@@ -9,7 +9,7 @@
 
 #include <ao/core/exception/exception.h>
 #include <ao/core/logger/logger.h>
-#include <ao/vulkan/utilities/settings.h>
+#include <ao/vulkan/engine/settings.h>
 
 #include "depth-rectangle.h"
 

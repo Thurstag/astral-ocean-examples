@@ -47,7 +47,7 @@ void ao::vulkan::GLFWEngine::saveCache(std::string const& directory, std::string
     }
 
     // Get pipeline cache
-    auto data = this->device->logical.getPipelineCacheData(cache);
+    auto data = this->device->logical()->getPipelineCacheData(cache);
 
     // Create file
     std::ofstream output_file(directory + std::string("/") + filename);
@@ -122,16 +122,16 @@ void ao::vulkan::GLFWEngine::initVulkan() {
 
     // Create command pool
     this->secondary_command_pool = std::make_unique<ao::vulkan::CommandPool>(
-        this->device->logical, vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
-        this->device->queues->at(vk::to_string(vk::QueueFlagBits::eGraphics)).family_index, ao::vulkan::CommandPoolAccessModeFlagBits::eConcurrent);
+        this->device->logical(), vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
+        this->device->queues()->at(vk::to_string(vk::QueueFlagBits::eGraphics)).family_index, ao::vulkan::CommandPoolAccessMode::eConcurrent);
 
     // Init metric module (TODO: DrawCall per second)
     this->metrics = std::make_unique<ao::vulkan::MetricModule>(this->device);
     this->metrics->add("CPU", new ao::vulkan::BasicDurationMetric<std::chrono::duration<double, std::milli>>("ms"));
-    this->metrics->add("GPU", new ao::vulkan::DurationCommandBufferMetric<std::milli>(
-                                  "ms", std::make_pair(std::weak_ptr<ao::vulkan::Device>(this->device), this->metrics->timestampQueryPool())));
+    this->metrics->add(
+        "GPU", new ao::vulkan::DurationCommandBufferMetric<std::milli>("ms", std::make_pair(this->device, this->metrics->timestampQueryPool())));
     this->metrics->add("Triangle/s", new ao::vulkan::CounterCommandBufferMetric<std::chrono::seconds, u64>(
-                                         0, std::make_pair(std::weak_ptr<ao::vulkan::Device>(this->device), this->metrics->triangleQueryPool())));
+                                         0, std::make_pair(this->device, this->metrics->triangleQueryPool())));
     this->metrics->add("Frame/s", new ao::vulkan::CounterMetric<std::chrono::seconds, int>(0));
 }
 
@@ -222,7 +222,7 @@ void ao::vulkan::GLFWEngine::updateCommandBuffers() {
 void ao::vulkan::GLFWEngine::afterFrame() {}
 
 std::vector<ao::vulkan::QueueRequest> ao::vulkan::GLFWEngine::requestQueues() const {
-    auto families = this->device->physical.getQueueFamilyProperties();
+    auto families = this->device->physical().getQueueFamilyProperties();
 
     // Get indices
     auto transfer_index = ao::vulkan::utilities::findQueueFamilyIndex(families, vk::QueueFlagBits::eTransfer);

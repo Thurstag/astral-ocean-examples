@@ -16,11 +16,11 @@ void ModelDemo::freeVulkan() {
     this->model_buffer.reset();
     this->ubo_buffer.reset();
 
-    this->device->logical.destroySampler(this->texture_sampler);
+    this->device->logical()->destroySampler(this->texture_sampler);
 
-    this->device->logical.destroyImage(std::get<0>(this->texture));
-    this->device->logical.destroyImageView(std::get<2>(this->texture));
-    this->device->logical.freeMemory(std::get<1>(this->texture));
+    this->device->logical()->destroyImage(std::get<0>(this->texture));
+    this->device->logical()->destroyImageView(std::get<2>(this->texture));
+    this->device->logical()->freeMemory(std::get<1>(this->texture));
 
     ao::vulkan::GLFWEngine::freeVulkan();
 }
@@ -29,7 +29,7 @@ vk::RenderPass ModelDemo::createRenderPass() {
     // Define attachments
     std::array<vk::AttachmentDescription, 2> attachments;
     attachments[0]
-        .setFormat(this->swapchain->colorFormat())
+        .setFormat(this->swapchain->surfaceColorFormat())
         .setSamples(vk::SampleCountFlagBits::e1)
         .setLoadOp(vk::AttachmentLoadOp::eClear)
         .setStoreOp(vk::AttachmentStoreOp::eStore)
@@ -38,7 +38,7 @@ vk::RenderPass ModelDemo::createRenderPass() {
         .setInitialLayout(vk::ImageLayout::eUndefined)
         .setFinalLayout(vk::ImageLayout::ePresentSrcKHR);
     attachments[1]
-        .setFormat(this->device->depth_format)
+        .setFormat(ao::vulkan::utilities::bestDepthStencilFormat(this->device->physical()))
         .setSamples(vk::SampleCountFlagBits::e1)
         .setLoadOp(vk::AttachmentLoadOp::eClear)
         .setStoreOp(vk::AttachmentStoreOp::eDontCare)
@@ -64,7 +64,7 @@ vk::RenderPass ModelDemo::createRenderPass() {
                                            .setDstAccessMask(vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite);
 
     // Create render pass
-    return this->device->logical.createRenderPass(
+    return this->device->logical()->createRenderPass(
         vk::RenderPassCreateInfo(vk::RenderPassCreateFlags(), static_cast<u32>(attachments.size()), attachments.data(), 1, &subpass, 1, &dependency));
 }
 
@@ -78,15 +78,15 @@ void ModelDemo::createPipelines() {
 
     // Create layout
     std::vector<vk::DescriptorSetLayout> descriptor_set_layouts;
-    descriptor_set_layouts.push_back(this->device->logical.createDescriptorSetLayout(
+    descriptor_set_layouts.push_back(this->device->logical()->createDescriptorSetLayout(
         vk::DescriptorSetLayoutCreateInfo(vk::DescriptorSetLayoutCreateFlags(), static_cast<u32>(bindings.size()), bindings.data())));
 
-    auto pipeline_layout = std::make_shared<ao::vulkan::PipelineLayout>(this->device, descriptor_set_layouts);
+    auto pipeline_layout = std::make_shared<ao::vulkan::PipelineLayout>(this->device->logical(), descriptor_set_layouts);
 
     /* PIPELINE PART */
 
     // Create shadermodules
-    ao::vulkan::ShaderModule module(this->device);
+    ao::vulkan::ShaderModule module(this->device->logical());
 
     // Load shaders & get shaderStages
     std::vector<vk::PipelineShaderStageCreateInfo> shader_stages =
@@ -153,9 +153,9 @@ void ModelDemo::createPipelines() {
     vk::PipelineCacheCreateInfo cache_info(vk::PipelineCacheCreateFlags(), cache.size(), cache.data());
 
     // Create rendering pipeline using the specified states
-    this->pipelines["main"] = new ao::vulkan::GraphicsPipeline(this->device, pipeline_layout, this->render_pass, shader_stages, vertex_state,
-                                                               input_state, std::nullopt, viewport_state, rasterization_state, multisample_state,
-                                                               depth_stencil_state, color_state, dynamic_state, cache_info);
+    this->pipelines["main"] = new ao::vulkan::GraphicsPipeline(this->device->logical(), pipeline_layout, this->render_pass, shader_stages,
+                                                               vertex_state, input_state, std::nullopt, viewport_state, rasterization_state,
+                                                               multisample_state, depth_stencil_state, color_state, dynamic_state, cache_info);
 
     // Define callback
     auto device = this->device;
@@ -169,8 +169,8 @@ void ModelDemo::createPipelines() {
     pool_sizes[1] = vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler, static_cast<u32>(this->swapchain->size()));
 
     this->pipelines["main"]->pools().push_back(std::move(ao::vulkan::DescriptorPool(
-        this->device, vk::DescriptorPoolCreateInfo(vk::DescriptorPoolCreateFlags(), static_cast<u32>(this->swapchain->size()),
-                                                   static_cast<u32>(pool_sizes.size()), pool_sizes.data()))));
+        this->device->logical(), vk::DescriptorPoolCreateInfo(vk::DescriptorPoolCreateFlags(), static_cast<u32>(this->swapchain->size()),
+                                                              static_cast<u32>(pool_sizes.size()), pool_sizes.data()))));
 }
 
 void ModelDemo::createVulkanBuffers() {
@@ -251,7 +251,7 @@ void ModelDemo::createVulkanBuffers() {
 
     this->ubo_buffer = std::make_unique<ao::vulkan::BasicDynamicArrayBuffer<UniformBufferObject>>(this->swapchain->size(), this->device);
     this->ubo_buffer->init(vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, vk::MemoryPropertyFlagBits::eHostVisible,
-                           ao::vulkan::Buffer::CalculateUBOAligmentSize(this->device->physical, sizeof(UniformBufferObject)));
+                           ao::vulkan::Buffer::CalculateUBOAligmentSize(this->device->physical(), sizeof(UniformBufferObject)));
 
     // Map buffer
     this->ubo_buffer->map();
@@ -283,31 +283,34 @@ void ModelDemo::createVulkanBuffers() {
     stbi_image_free(pixels);
 
     // Create image
-    auto image =
-        this->device->createImage(texture_width, texture_height, 1, 1, vk::Format::eR8G8B8A8Unorm, vk::ImageType::e2D, vk::ImageTiling::eOptimal,
-                                  vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal);
+    auto image = ao::vulkan::utilities::createImage(
+        *this->device->logical(), this->device->physical(), texture_width, texture_height, 1, 1, vk::Format::eR8G8B8A8Unorm, vk::ImageType::e2D,
+        vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
     // Assign
     std::get<0>(this->texture) = image.first;
     std::get<1>(this->texture) = image.second;
 
     // Process image & copy into image
-    this->device->processImage(std::get<0>(this->texture), vk::Format::eR8G8B8A8Unorm,
-                               vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1), vk::ImageLayout::eUndefined,
-                               vk::ImageLayout::eTransferDstOptimal);
-    this->device->copyBufferToImage(texture_buffer.buffer(), std::get<0>(this->texture),
-                                    vk::BufferImageCopy(0, 0, 0, vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1), vk::Offset3D(),
-                                                        vk::Extent3D(vk::Extent2D(texture_width, texture_height), 1)));
-    this->device->processImage(std::get<0>(this->texture), vk::Format::eR8G8B8A8Unorm,
-                               vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1), vk::ImageLayout::eTransferDstOptimal,
-                               vk::ImageLayout::eShaderReadOnlyOptimal);
+    ao::vulkan::utilities::updateImageLayout(
+        *this->device->logical(), this->device->graphicsPool(), *this->device->queues(), std::get<0>(this->texture), vk::Format::eR8G8B8A8Unorm,
+        vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1), vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
+    ao::vulkan::utilities::copyBufferToImage(*this->device->logical(), this->device->transferPool(), *this->device->queues(), texture_buffer.buffer(),
+                                             std::get<0>(this->texture),
+                                             vk::BufferImageCopy(0, 0, 0, vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1),
+                                                                 vk::Offset3D(), vk::Extent3D(vk::Extent2D(texture_width, texture_height), 1)));
+    ao::vulkan::utilities::updateImageLayout(*this->device->logical(), this->device->graphicsPool(), *this->device->queues(),
+                                             std::get<0>(this->texture), vk::Format::eR8G8B8A8Unorm,
+                                             vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1),
+                                             vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
 
     // Create view
-    std::get<2>(this->texture) = this->device->createImageView(std::get<0>(this->texture), vk::Format::eR8G8B8A8Unorm, vk::ImageViewType::e2D,
-                                                               vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
+    std::get<2>(this->texture) =
+        ao::vulkan::utilities::createImageView(*this->device->logical(), std::get<0>(this->texture), vk::Format::eR8G8B8A8Unorm,
+                                               vk::ImageViewType::e2D, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
 
     // Create sampler
-    this->texture_sampler = this->device->logical.createSampler(
+    this->texture_sampler = this->device->logical()->createSampler(
         vk::SamplerCreateInfo(vk::SamplerCreateFlags(), vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eLinear,
                               vk::SamplerAddressMode::eRepeat, vk::SamplerAddressMode::eRepeat, vk::SamplerAddressMode::eRepeat, 0, VK_TRUE, 16,
                               VK_FALSE, vk::CompareOp::eAlways, 0, 0, vk::BorderColor::eFloatOpaqueBlack, VK_FALSE));
@@ -325,10 +328,10 @@ void ModelDemo::createVulkanBuffers() {
         vk::DescriptorImageInfo sample_info(this->texture_sampler, std::get<2>(this->texture), vk::ImageLayout::eShaderReadOnlyOptimal);
         vk::DescriptorBufferInfo buffer_info(this->ubo_buffer->buffer(), this->ubo_buffer->offset(i), sizeof(UniformBufferObject));
 
-        this->device->logical.updateDescriptorSets(
+        this->device->logical()->updateDescriptorSets(
             vk::WriteDescriptorSet(descriptor_sets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &buffer_info), {});
 
-        this->device->logical.updateDescriptorSets(
+        this->device->logical()->updateDescriptorSets(
             vk::WriteDescriptorSet(descriptor_sets[i], 1, 0, 1, vk::DescriptorType::eCombinedImageSampler, &sample_info), {});
     }
 }
