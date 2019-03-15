@@ -23,7 +23,7 @@
 #include "../shared/vertex.hpp"
 
 using pixel_t = unsigned char;
-using UBO = InstanceUniformBufferObject<INSTANCE_COUNT>;
+using UBO = InstanceUniformBufferObject;
 
 class TextureArrayDemo : public ao::vulkan::GLFWEngine {
    public:
@@ -33,8 +33,9 @@ class TextureArrayDemo : public ao::vulkan::GLFWEngine {
     std::vector<TexturedVertex> vertices;
     std::vector<u16> indices;
 
-    std::unique_ptr<ao::vulkan::BasicDynamicArrayBuffer<UBO>> ubo_buffer;
+    std::unique_ptr<ao::vulkan::BasicDynamicArrayBuffer<UBO::InstanceData>> instance_buffer;
     std::unique_ptr<ao::vulkan::StagingTupleBuffer<TexturedVertex, u16>> model_buffer;
+    std::unique_ptr<ao::vulkan::BasicDynamicArrayBuffer<UBO>> ubo_buffer;
     std::tuple<vk::Image, vk::DeviceMemory, vk::ImageView> texture;
     vk::Sampler texture_sampler;
 

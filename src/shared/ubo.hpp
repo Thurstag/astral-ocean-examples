@@ -19,7 +19,6 @@ struct UniformBufferLightObject {
     glm::vec4 color;  // x,y,z = color & w = ambient strength
 };
 
-template<size_t InstanceCount = 1>
 struct InstanceUniformBufferObject {
     struct InstanceData {
         glm::mat4 rotation;
@@ -28,5 +27,4 @@ struct InstanceUniformBufferObject {
 
     glm::mat4 view;
     glm::mat4 proj;
-    InstanceData instances[InstanceCount];
 };

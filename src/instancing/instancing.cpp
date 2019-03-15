@@ -13,6 +13,7 @@ void InstancingDemo::freeVulkan() {
     // Free buffers
     this->model_buffer.reset();
     this->ubo_buffer.reset();
+    this->instance_buffer.reset();
 
     // Free wrappers
     for (auto buffer : this->secondary_command_buffers) {
@@ -135,13 +136,30 @@ void InstancingDemo::createPipelines() {
     // Specifies the vertex input parameters for a pipeline
 
     // Vertex input binding
-    vk::VertexInputBindingDescription vertex_input = Vertex::BindingDescription();
+    std::array<vk::VertexInputBindingDescription, 2> vertex_inputs;
+    vertex_inputs[0] = vk::VertexInputBindingDescription(0, sizeof(Vertex), vk::VertexInputRate::eVertex);
+    vertex_inputs[1] = vk::VertexInputBindingDescription(1, sizeof(UBO::InstanceData), vk::VertexInputRate::eInstance);
 
-    // Inpute attribute bindings
-    std::array<vk::VertexInputAttributeDescription, 2> vertex_attributes = Vertex::AttributeDescriptions();
+    // Input attribute bindings
+    std::array<vk::VertexInputAttributeDescription, 7> vertex_attributes;
+    vertex_attributes[0] = vk::VertexInputAttributeDescription(0, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, pos));
+    vertex_attributes[1] = vk::VertexInputAttributeDescription(1, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, color));
+
+    // Matrice 4x4
+    vertex_attributes[2] = vk::VertexInputAttributeDescription(2, 1, vk::Format::eR32G32B32A32Sfloat, offsetof(UBO::InstanceData, rotation));
+    vertex_attributes[3] =
+        vk::VertexInputAttributeDescription(3, 1, vk::Format::eR32G32B32A32Sfloat, offsetof(UBO::InstanceData, rotation) + sizeof(glm::vec4));
+    vertex_attributes[4] =
+        vk::VertexInputAttributeDescription(4, 1, vk::Format::eR32G32B32A32Sfloat, offsetof(UBO::InstanceData, rotation) + sizeof(glm::vec4) * 2);
+    vertex_attributes[5] =
+        vk::VertexInputAttributeDescription(5, 1, vk::Format::eR32G32B32A32Sfloat, offsetof(UBO::InstanceData, rotation) + sizeof(glm::vec4) * 3);
+
+    vertex_attributes[6] =
+        vk::VertexInputAttributeDescription(6, 1, vk::Format::eR32G32B32A32Sfloat, offsetof(UBO::InstanceData, position_and_scale));
+
     // Vertex input state used for pipeline creation
-    vk::PipelineVertexInputStateCreateInfo vertex_state(vk::PipelineVertexInputStateCreateFlags(), 1, &vertex_input,
-                                                        static_cast<u32>(vertex_attributes.size()), vertex_attributes.data());
+    vk::PipelineVertexInputStateCreateInfo vertex_state(vk::PipelineVertexInputStateCreateFlags(), static_cast<u32>(vertex_inputs.size()),
+                                                        vertex_inputs.data(), static_cast<u32>(vertex_attributes.size()), vertex_attributes.data());
 
     // Cache create info
     auto cache = ao::vulkan::GLFWEngine::LoadCache("data/instancing/caches/main.cache");
@@ -179,11 +197,13 @@ void InstancingDemo::createVulkanBuffers() {
     this->ubo_buffer->init(vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, vk::MemoryPropertyFlagBits::eHostVisible,
                            ao::vulkan::Buffer::CalculateUBOAligmentSize(this->device->physical(), sizeof(UBO)));
 
-    // Map buffer
-    this->ubo_buffer->map();
-
     // Resize uniform buffers vector
     this->uniform_buffers.resize(this->swapchain->size());
+
+    this->instance_buffer =
+        std::make_unique<ao::vulkan::BasicDynamicArrayBuffer<UBO::InstanceData>>(INSTANCE_COUNT * this->swapchain->size(), this->device);
+    this->instance_buffer->init(vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, vk::MemoryPropertyFlagBits::eHostVisible,
+                                sizeof(UBO::InstanceData));
 
     /* DESCRIPTOR SETS CREATION */
 
@@ -209,10 +229,10 @@ void InstancingDemo::createSecondaryCommandBuffers() {
     this->secondary_command_buffers.resize(command_buffers.size());
     for (size_t i = 0; i < command_buffers.size(); i++) {
         this->secondary_command_buffers[i] = new ao::vulkan::SecondaryCommandBuffer(
-            command_buffers[i],
-            [pipeline = this->pipelines["main"], indices_count = this->indices.size(), rectangle = this->model_buffer.get(),
-             &ubo_buffer = this->ubo_buffer](vk::CommandBuffer command_buffer, vk::CommandBufferInheritanceInfo const& inheritance_info,
-                                             vk::Extent2D swapchain_extent, int frame_index) {
+            command_buffers[i], [pipeline = this->pipelines["main"], indices_count = this->indices.size(), rectangle = this->model_buffer.get(),
+                                 instance = this->instance_buffer.get(), &ubo_buffer = this->ubo_buffer, swapchain_size = this->swapchain->size()](
+                                    vk::CommandBuffer command_buffer, vk::CommandBufferInheritanceInfo const& inheritance_info,
+                                    vk::Extent2D swapchain_extent, int frame_index) {
                 // Create info
                 vk::CommandBufferBeginInfo begin_info =
                     vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eRenderPassContinue).setPInheritanceInfo(&inheritance_info);
@@ -229,7 +249,9 @@ void InstancingDemo::createSecondaryCommandBuffers() {
 
                     // Draw rectangles
                     command_buffer.bindVertexBuffers(0, rectangle->buffer(), {0});
+                    command_buffer.bindVertexBuffers(1, instance->buffer(), {(instance->size() / swapchain_size) * frame_index});
                     command_buffer.bindIndexBuffer(rectangle->buffer(), rectangle->offset(1), vk::IndexType::eUint16);
+
                     command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline->layout()->value(), 0,
                                                       pipeline->pools().front().descriptorSets().at(frame_index), {});
 
@@ -252,8 +274,8 @@ void InstancingDemo::beforeCommandBuffersUpdate() {
 
         // Generate vector of rotations
         std::srand(std::time(nullptr));
-        this->rotations.resize(INSTANCE_COUNT);
-        for (size_t i = 0; i < INSTANCE_COUNT; i++) {
+        this->rotations.resize(INSTANCE_COUNT * this->swapchain->size());
+        for (size_t i = 0; i < INSTANCE_COUNT * this->swapchain->size(); i++) {
             this->rotations[i] = static_cast<float>((std::rand() % (180 - 10)) + 10);
         }
 
@@ -265,6 +287,7 @@ void InstancingDemo::beforeCommandBuffersUpdate() {
                 glm::perspective(glm::radians(45.0f), this->swapchain->extent().width / (float)this->swapchain->extent().height, 0.1f, 10.0f);
             this->uniform_buffers[j].proj[1][1] *= -1;  // Adapt for vulkan
         }
+        this->ubo_buffer->update(this->uniform_buffers);
 
         return;
     }
@@ -272,12 +295,15 @@ void InstancingDemo::beforeCommandBuffersUpdate() {
     // Delta time
     float delta_time = std::chrono::duration<float, std::chrono::seconds::period>(std::chrono::system_clock::now() - this->clock).count();
 
-    // Update uniform buffer
-    auto range = boost::irange<u64>(0, INSTANCE_COUNT);
+    // Update instance data
+    auto range =
+        boost::irange<u64>(INSTANCE_COUNT * this->swapchain->frameIndex(), (INSTANCE_COUNT * this->swapchain->frameIndex()) + INSTANCE_COUNT);
     std::for_each(std::execution::par_unseq, range.begin(), range.end(), [&](auto i) {
-        this->uniform_buffers[this->swapchain->frameIndex()].instances[i].rotation =
-            glm::rotate(glm::mat4(1.0f), delta_time * glm::radians(this->rotations[i]), glm::vec3(.0f, 1.0f, 1.0f));
-        this->uniform_buffers[this->swapchain->frameIndex()].instances[i].position_and_scale.w = (0.25f * glm::cos(delta_time)) + 0.75f;
+        UBO::InstanceData data;
+        data.rotation = glm::rotate(glm::mat4(1.0f), delta_time * glm::radians(this->rotations[i]), glm::vec3(.0f, 1.0f, 1.0f));
+        data.position_and_scale = {.0f, .0f, .0f, (0.25f * glm::cos(delta_time)) + 0.75f};
+
+        this->instance_buffer->updateFragment(i, &data);
     });
 
     if (this->swapchain->state() == ao::vulkan::SwapchainState::eReset) {
@@ -286,8 +312,8 @@ void InstancingDemo::beforeCommandBuffersUpdate() {
                 glm::perspective(glm::radians(45.0f), this->swapchain->extent().width / (float)this->swapchain->extent().height, 0.1f, 10.0f);
             this->uniform_buffers[i].proj[1][1] *= -1;  // Adapt for vulkan
         }
-    }
 
-    // Update buffer
-    this->ubo_buffer->updateFragment(this->swapchain->frameIndex(), &this->uniform_buffers[this->swapchain->frameIndex()]);
+        // Update buffer
+        this->ubo_buffer->update(this->uniform_buffers);
+    }
 }

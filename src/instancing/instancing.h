@@ -22,7 +22,7 @@
 #include "../shared/ubo.hpp"
 #include "../shared/vertex.hpp"
 
-using UBO = InstanceUniformBufferObject<INSTANCE_COUNT>;
+using UBO = InstanceUniformBufferObject;
 
 class InstancingDemo : public ao::vulkan::GLFWEngine {
    public:
@@ -32,6 +32,7 @@ class InstancingDemo : public ao::vulkan::GLFWEngine {
     std::vector<Vertex> vertices;
     std::vector<u16> indices;
 
+    std::unique_ptr<ao::vulkan::BasicDynamicArrayBuffer<UBO::InstanceData>> instance_buffer;
     std::unique_ptr<ao::vulkan::StagingTupleBuffer<Vertex, u16>> model_buffer;
     std::unique_ptr<ao::vulkan::BasicDynamicArrayBuffer<UBO>> ubo_buffer;
 
