@@ -13,11 +13,17 @@ struct UniformBufferObject {
     float scale = 1.0f;
 };
 
+struct UniformBufferLightObject {
+    glm::vec4 view_position;
+    glm::vec4 position;
+    glm::vec4 color;  // x,y,z = color & w = ambient strength
+};
+
 template<size_t InstanceCount = 1>
 struct InstanceUniformBufferObject {
     struct InstanceData {
         glm::mat4 rotation;
-        glm::vec4 positionAndScale;  // x,y,z = position & w = scale
+        glm::vec4 position_and_scale;  // x,y,z = position & w = scale
     };
 
     glm::mat4 view;

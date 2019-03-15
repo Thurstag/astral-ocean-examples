@@ -24,7 +24,7 @@
 
 using UBO = InstanceUniformBufferObject<INSTANCE_COUNT>;
 
-class InstancingDemo : public virtual ao::vulkan::GLFWEngine {
+class InstancingDemo : public ao::vulkan::GLFWEngine {
    public:
     std::chrono::time_point<std::chrono::system_clock> clock;
     bool clock_start = false;
@@ -35,14 +35,13 @@ class InstancingDemo : public virtual ao::vulkan::GLFWEngine {
     std::unique_ptr<ao::vulkan::StagingTupleBuffer<Vertex, u16>> model_buffer;
     std::unique_ptr<ao::vulkan::BasicDynamicArrayBuffer<UBO>> ubo_buffer;
 
+    std::vector<ao::vulkan::SecondaryCommandBuffer*> secondary_command_buffers;
+
     std::vector<UBO> uniform_buffers;
     std::vector<float> rotations;
 
-    std::map<vk::CommandBuffer, bool> to_update;
-
     explicit InstancingDemo(std::shared_ptr<ao::vulkan::EngineSettings> settings)
         : ao::vulkan::GLFWEngine(settings),
-          ao::vulkan::Engine(settings),
           vertices({{{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},
                     {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}},
                     {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}},
@@ -55,7 +54,5 @@ class InstancingDemo : public virtual ao::vulkan::GLFWEngine {
     void createPipelines() override;
     void createVulkanBuffers() override;
     void createSecondaryCommandBuffers() override;
-    void executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritance_info, int frame_index,
-                                        vk::CommandBuffer primary_command) override;
     void beforeCommandBuffersUpdate() override;
 };

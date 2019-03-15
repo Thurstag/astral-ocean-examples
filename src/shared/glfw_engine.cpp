@@ -78,7 +78,7 @@ void ao::vulkan::GLFWEngine::initWindow() {
     // Set icon
     std::array<GLFWimage, 1> icons;
     icons.front().pixels = stbi_load("assets/icons/logo.png", &icons.front().width, &icons.front().height, nullptr, STBI_rgb_alpha);
-    glfwSetWindowIcon(this->window, icons.size(), icons.data());
+    glfwSetWindowIcon(this->window, static_cast<int>(icons.size()), icons.data());
     stbi_image_free(icons.front().pixels);
 
     // Define buffer resize callback
@@ -114,6 +114,11 @@ void ao::vulkan::GLFWEngine::freeVulkan() {
     // Free command buffers
     this->secondary_command_pool.reset();
 
+    // Free wrappers
+    for (auto buffer : this->primary_command_buffers) {
+        delete buffer;
+    }
+
     ao::vulkan::Engine::freeVulkan();
 }
 
@@ -133,6 +138,63 @@ void ao::vulkan::GLFWEngine::initVulkan() {
     this->metrics->add("Triangle/s", new ao::vulkan::CounterCommandBufferMetric<std::chrono::seconds, u64>(
                                          0, std::make_pair(this->device, this->metrics->triangleQueryPool())));
     this->metrics->add("Frame/s", new ao::vulkan::CounterMetric<std::chrono::seconds, int>(0));
+}
+
+void ao::vulkan::GLFWEngine::prepareVulkan() {
+    ao::vulkan::Engine::prepareVulkan();
+
+    // Create primary wrappers
+    this->primary_command_buffers.resize(this->swapchain->size());
+    for (size_t i = 0; i < this->swapchain->size(); i++) {
+        this->primary_command_buffers[i] = new ao::vulkan::PrimaryCommandBuffer(
+            this->swapchain->commandBuffers()[i], ao::vulkan::ExecutionPolicy::eSequenced,
+            [& metrics = this->metrics](vk::CommandBuffer command_buffer, vk::ArrayProxy<vk::CommandBuffer const> secondary_command_buffers,
+                                        vk::RenderPass render_pass, vk::Framebuffer frame, vk::Extent2D swapchain_extent, int frame_index) {
+                // Clear values
+                std::array<vk::ClearValue, 2> clear_values;
+                clear_values[0].setColor(vk::ClearColorValue());
+                clear_values[1].setDepthStencil(vk::ClearDepthStencilValue(1));
+
+                // Begin info
+                vk::CommandBufferBeginInfo begin_info(vk::CommandBufferUsageFlagBits::eRenderPassContinue);
+
+                // Render pass info
+                vk::RenderPassBeginInfo render_pass_info(render_pass, frame, vk::Rect2D().setExtent(swapchain_extent),
+                                                         static_cast<u32>(clear_values.size()), clear_values.data());
+
+                command_buffer.begin(begin_info);
+                {
+                    // Reset pools
+                    command_buffer.resetQueryPool(metrics->timestampQueryPool(), frame_index * 2, 2);
+                    command_buffer.resetQueryPool(metrics->triangleQueryPool(), frame_index * 4, 4);
+
+                    // Statistics
+                    command_buffer.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, metrics->timestampQueryPool(), frame_index * 2);
+                    command_buffer.beginQuery(metrics->triangleQueryPool(), frame_index * 4, vk::QueryControlFlags());
+
+                    // Execute secondary command buffers
+                    command_buffer.beginRenderPass(render_pass_info, vk::SubpassContents::eSecondaryCommandBuffers);
+                    {
+                        if (!secondary_command_buffers.empty()) {
+                            command_buffer.executeCommands(secondary_command_buffers);
+                        }
+                    }
+                    command_buffer.endRenderPass();
+
+                    // Statistics
+                    command_buffer.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, metrics->timestampQueryPool(), (frame_index * 2) + 1);
+                    command_buffer.endQuery(metrics->triangleQueryPool(), frame_index * 4);
+                }
+                command_buffer.end();
+            },
+            [](vk::RenderPass render_pass, vk::Framebuffer frame) {
+                return vk::CommandBufferInheritanceInfo(render_pass, 0, frame)
+                    .setPipelineStatistics(vk::QueryPipelineStatisticFlagBits::eClippingInvocations);
+            });
+    }
+
+    // Create secondary command buffers
+    this->createSecondaryCommandBuffers();
 }
 
 void ao::vulkan::GLFWEngine::render() {
@@ -169,11 +231,7 @@ void ao::vulkan::GLFWEngine::waitMaximized() {
 }
 
 std::vector<vk::PhysicalDeviceFeatures> ao::vulkan::GLFWEngine::deviceFeatures() const {
-    auto features = vk::PhysicalDeviceFeatures();
-
-    features.setSamplerAnisotropy(VK_TRUE);
-
-    return {features};
+    return {vk::PhysicalDeviceFeatures().setSamplerAnisotropy(VK_TRUE)};
 }
 
 std::vector<char const*> ao::vulkan::GLFWEngine::instanceExtensions() const {
@@ -181,42 +239,19 @@ std::vector<char const*> ao::vulkan::GLFWEngine::instanceExtensions() const {
 }
 
 void ao::vulkan::GLFWEngine::updateCommandBuffers() {
-    // Get current command buffer/frame
-    vk::CommandBuffer command = this->swapchain->currentCommand();
-    vk::Framebuffer frame = this->swapchain->currentFrame();
-
-    // Create info
-    vk::CommandBufferBeginInfo begin_info(vk::CommandBufferUsageFlagBits::eRenderPassContinue);
-
-    std::array<vk::ClearValue, 2> clearValues;
-    clearValues[0].setColor(vk::ClearColorValue());
-    clearValues[1].setDepthStencil(vk::ClearDepthStencilValue(1));
-
-    vk::RenderPassBeginInfo render_pass_info(this->render_pass, frame, vk::Rect2D().setExtent(this->swapchain->extent()),
-                                             static_cast<u32>(clearValues.size()), clearValues.data());
-
-    command.begin(&begin_info);
-
-    command.resetQueryPool(this->metrics->timestampQueryPool(), 0, 2);
-    command.resetQueryPool(this->metrics->triangleQueryPool(), 0, 4);
-
-    command.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, this->metrics->timestampQueryPool(), 0);
-    command.beginQuery(this->metrics->triangleQueryPool(), 0, vk::QueryControlFlags());
-    command.beginRenderPass(render_pass_info, vk::SubpassContents::eSecondaryCommandBuffers);
-    {
-        // Create inheritance info for the secondary command buffers
-        vk::CommandBufferInheritanceInfo inheritanceInfo(this->render_pass, 0, frame);
-        inheritanceInfo.setPipelineStatistics(vk::QueryPipelineStatisticFlagBits::eClippingInvocations);
-
-        // Execute secondary command buffers
-        this->executeSecondaryCommandBuffers(inheritanceInfo, this->swapchain->frameIndex(), command);
+    // Invalidate all command buffers
+    if (this->swapchain->state() == ao::vulkan::SwapchainState::eReset) {
+        for (auto buffer : this->primary_command_buffers) {
+            buffer->invalidate();
+        }
     }
-    command.endRenderPass();
 
-    command.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, this->metrics->timestampQueryPool(), 1);
-    command.endQuery(this->metrics->triangleQueryPool(), 0);
+    auto index = this->swapchain->frameIndex();
 
-    command.end();
+    // Update command buffer
+    if (this->primary_command_buffers[index]->state() == ao::vulkan::CommandBufferState::eOutdate) {
+        this->primary_command_buffers[index]->update(this->render_pass, this->swapchain->currentFrame(), this->swapchain->extent(), index);
+    }
 }
 
 void ao::vulkan::GLFWEngine::afterFrame() {}

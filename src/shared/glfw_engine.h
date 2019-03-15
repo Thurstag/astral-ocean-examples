@@ -19,6 +19,7 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
+#include "command_buffer/primary_command_buffer.h"
 #include "metrics/metric_module.h"
 #include "utilities/glfw.h"
 
@@ -28,7 +29,7 @@ namespace ao::vulkan {
         constexpr char* WindowTitle = "window.title";
     }  // namespace settings
 
-    class GLFWEngine : public virtual Engine {
+    class GLFWEngine : public Engine {
        public:
         explicit GLFWEngine(std::shared_ptr<EngineSettings> settings);
         virtual ~GLFWEngine() = default;
@@ -82,12 +83,18 @@ namespace ao::vulkan {
         void saveCache(std::string const& directory, std::string const& filename, vk::PipelineCache cache);
 
        protected:
+        std::vector<PrimaryCommandBuffer*> primary_command_buffers;
         std::unique_ptr<CommandPool> secondary_command_pool;
-        std::vector<vk::CommandBuffer> command_buffers;
         GLFWwindow* window;
 
-        std::unique_ptr<MetricModule> metrics;
         std::map<u64, std::pair<u64, u64>> key_states;
+        std::unique_ptr<MetricModule> metrics;
+
+        /**
+         * @brief Create secondary command buffers
+         *
+         */
+        virtual void createSecondaryCommandBuffers() = 0;
 
         void initWindow() override;
         vk::SurfaceKHR createSurface() override;
@@ -96,6 +103,7 @@ namespace ao::vulkan {
 
         void freeVulkan() override;
         void initVulkan() override;
+        void prepareVulkan() override;
         void render() override;
         bool loopingCondition() const override;
         void waitMaximized() override;

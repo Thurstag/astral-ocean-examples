@@ -23,7 +23,7 @@
 
 using pixel_t = unsigned char;
 
-class MipmapDemo : public virtual ao::vulkan::GLFWEngine {
+class MipmapDemo : public ao::vulkan::GLFWEngine {
    public:
     std::chrono::time_point<std::chrono::system_clock> clock;
     bool clock_start = false;
@@ -37,13 +37,12 @@ class MipmapDemo : public virtual ao::vulkan::GLFWEngine {
     std::tuple<vk::Image, vk::DeviceMemory, vk::ImageView> texture;
     vk::Sampler texture_sampler;
 
-    std::vector<UniformBufferObject> uniform_buffers;
-
-    std::map<vk::CommandBuffer, bool> to_update;
+    std::vector<ao::vulkan::SecondaryCommandBuffer*> secondary_command_buffers;
 
     std::tuple<glm::vec3, float, float, float> camera;
+    std::vector<UniformBufferObject> uniform_buffers;
 
-    explicit MipmapDemo(std::shared_ptr<ao::vulkan::EngineSettings> settings) : ao::vulkan::GLFWEngine(settings), ao::vulkan::Engine(settings){};
+    explicit MipmapDemo(std::shared_ptr<ao::vulkan::EngineSettings> settings) : ao::vulkan::GLFWEngine(settings){};
     virtual ~MipmapDemo() = default;
 
     /**
@@ -58,7 +57,5 @@ class MipmapDemo : public virtual ao::vulkan::GLFWEngine {
     void createPipelines() override;
     void createVulkanBuffers() override;
     void createSecondaryCommandBuffers() override;
-    void executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritance_info, int frame_index,
-                                        vk::CommandBuffer primary_command) override;
     void beforeCommandBuffersUpdate() override;
 };

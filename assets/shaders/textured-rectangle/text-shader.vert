@@ -8,12 +8,12 @@ layout(binding = 0) uniform UniformBufferObject {
     float scale;
 } ubo;
 
-layout(location = 0) in vec2 inPosition;
-layout(location = 1) in vec2 inTexCoord;
+layout(location = 0) in vec2 in_position;
+layout(location = 1) in vec2 in_texture_coord;
 
-layout(location = 0) out vec2 fragTexCoord;
+layout(location = 0) out vec2 out_texture_coord;
 
 void main() {
-    gl_Position = ubo.proj * ubo.view * ubo.rotation * vec4(vec2(ubo.scale * inPosition), 0.0, 1.0);
-    fragTexCoord = inTexCoord;
+    gl_Position = ubo.proj * ubo.view * ubo.rotation * vec4(vec2(ubo.scale * in_position), 0.0, 1.0);
+    out_texture_coord = in_texture_coord;
 }

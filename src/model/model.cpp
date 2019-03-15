@@ -13,8 +13,14 @@
 #include <boost/range/irange.hpp>
 
 void ModelDemo::freeVulkan() {
+    // Free buffers
     this->model_buffer.reset();
     this->ubo_buffer.reset();
+
+    // Free wrappers
+    for (auto buffer : this->secondary_command_buffers) {
+        delete buffer;
+    }
 
     this->device->logical()->destroySampler(this->texture_sampler);
 
@@ -94,7 +100,7 @@ void ModelDemo::createPipelines() {
             .loadShader(vk::ShaderStageFlagBits::eFragment, "assets/shaders/model/frag.spv")
             .shaderStages();
 
-    // Construct the differnent states making up the pipeline
+    // Construct the different states making up the pipeline
 
     // Input assembly state
     vk::PipelineInputAssemblyStateCreateInfo input_state(vk::PipelineInputAssemblyStateCreateFlags(), vk::PrimitiveTopology::eTriangleList);
@@ -239,7 +245,7 @@ void ModelDemo::createVulkanBuffers() {
 
     // Create vertices & indices
     this->model_buffer =
-        std::make_unique<ao::vulkan::StagingTupleBuffer<TexturedVertex, u32>>(this->device, vk::CommandBufferUsageFlagBits::eOneTimeSubmit, true);
+        std::make_unique<ao::vulkan::StagingTupleBuffer<TexturedVertex, u32>>(this->device, vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
     this->model_buffer->init({sizeof(TexturedVertex) * this->vertices.size(), sizeof(u32) * this->indices.size()})
         ->update(this->vertices.data(), this->indices.data());
 
@@ -337,57 +343,46 @@ void ModelDemo::createVulkanBuffers() {
 }
 
 void ModelDemo::createSecondaryCommandBuffers() {
-    this->command_buffers =
+    auto command_buffers =
         this->secondary_command_pool->allocateCommandBuffers(vk::CommandBufferLevel::eSecondary, static_cast<u32>(this->swapchain->size()));
 
-    for (auto& command_buffer : this->command_buffers) {
-        this->to_update[command_buffer] = true;
-    }
-}
+    this->secondary_command_buffers.resize(command_buffers.size());
+    for (size_t i = 0; i < command_buffers.size(); i++) {
+        this->secondary_command_buffers[i] = new ao::vulkan::SecondaryCommandBuffer(
+            command_buffers[i],
+            [pipeline = this->pipelines["main"], indices_count = this->indices_count, model = this->model_buffer.get(),
+             &ubo_buffer = this->ubo_buffer](vk::CommandBuffer command_buffer, vk::CommandBufferInheritanceInfo const& inheritance_info,
+                                             vk::Extent2D swapchain_extent, int frame_index) {
+                // Begin info
+                vk::CommandBufferBeginInfo begin_info =
+                    vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eRenderPassContinue).setPInheritanceInfo(&inheritance_info);
 
-void ModelDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritance_info, int frame_index,
-                                               vk::CommandBuffer primary_command) {
-    auto& command_buffer = this->command_buffers[frame_index];
+                command_buffer.begin(begin_info);
+                {
+                    // Set viewport & scissor
+                    command_buffer.setViewport(
+                        0, vk::Viewport(0, 0, static_cast<float>(swapchain_extent.width), static_cast<float>(swapchain_extent.height), 0, 1));
+                    command_buffer.setScissor(0, vk::Rect2D(vk::Offset2D(), swapchain_extent));
 
-    // Reset all command buffers
-    if (this->swapchain->state() == ao::vulkan::SwapchainState::eReset) {
-        for (auto [key, value] : this->to_update) {
-            this->to_update[key] = true;
-        }
-    }
+                    // Bind pipeline
+                    command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline->value());
 
-    // Draw in command
-    if (this->to_update[command_buffer]) {
-        // Begin info
-        vk::CommandBufferBeginInfo begin_info =
-            vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eRenderPassContinue).setPInheritanceInfo(&inheritance_info);
+                    // Draw model
+                    command_buffer.bindVertexBuffers(0, model->buffer(), {0});
+                    command_buffer.bindIndexBuffer(model->buffer(), model->offset(1), vk::IndexType::eUint32);
+                    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline->layout()->value(), 0,
+                                                      pipeline->pools().front().descriptorSets().at(frame_index), {});
 
-        command_buffer.begin(begin_info);
-        {
-            // Set viewport & scissor
-            command_buffer.setViewport(0, vk::Viewport(0, 0, static_cast<float>(this->swapchain->extent().width),
-                                                       static_cast<float>(this->swapchain->extent().height), 0, 1));
-            command_buffer.setScissor(0, vk::Rect2D(vk::Offset2D(), this->swapchain->extent()));
-
-            // Bind pipeline
-            command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, this->pipelines["main"]->value());
-
-            // Draw rectangle
-            ao::vulkan::TupleBuffer<TexturedVertex, u32>* rectangle = this->model_buffer.get();
-            command_buffer.bindVertexBuffers(0, rectangle->buffer(), {0});
-            command_buffer.bindIndexBuffer(rectangle->buffer(), rectangle->offset(1), vk::IndexType::eUint32);
-            command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->pipelines["main"]->layout()->value(), 0,
-                                              this->pipelines["main"]->pools().front().descriptorSets().at(frame_index), {});
-
-            command_buffer.drawIndexed(this->indices_count, 1, 0, 0, 0);
-        }
-        command_buffer.end();
-
-        this->to_update[command_buffer] = false;
+                    command_buffer.drawIndexed(indices_count, 1, 0, 0, 0);
+                }
+                command_buffer.end();
+            });
     }
 
-    // Pass to primary
-    primary_command.executeCommands(command_buffer);
+    // Add to primary
+    for (size_t i = 0; i < this->swapchain->size(); i++) {
+        this->primary_command_buffers[i]->addSecondary(this->secondary_command_buffers[i]);
+    }
 }
 
 void ModelDemo::beforeCommandBuffersUpdate() {
@@ -398,6 +393,10 @@ void ModelDemo::beforeCommandBuffersUpdate() {
         // Init uniform buffers
         for (size_t i = 0; i < this->swapchain->size(); i++) {
             this->uniform_buffers[i].view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+
+            this->uniform_buffers[i].proj =
+                glm::perspective(glm::radians(45.0f), this->swapchain->extent().width / (float)this->swapchain->extent().height, 0.1f, 10.0f);
+            this->uniform_buffers[i].proj[1][1] *= -1;  // Adapt for vulkan
         }
         return;
     }
@@ -408,9 +407,14 @@ void ModelDemo::beforeCommandBuffersUpdate() {
     // Update uniform buffer
     this->uniform_buffers[this->swapchain->frameIndex()].rotation =
         glm::rotate(glm::mat4(1.0f), delta_time * glm::radians(45.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    this->uniform_buffers[this->swapchain->frameIndex()].proj =
-        glm::perspective(glm::radians(45.0f), this->swapchain->extent().width / (float)this->swapchain->extent().height, 0.1f, 10.0f);
-    this->uniform_buffers[this->swapchain->frameIndex()].proj[1][1] *= -1;  // Adapt for vulkan
+
+    if (this->swapchain->state() == ao::vulkan::SwapchainState::eReset) {
+        for (size_t i = 0; i < this->swapchain->size(); i++) {
+            this->uniform_buffers[i].proj =
+                glm::perspective(glm::radians(45.0f), this->swapchain->extent().width / (float)this->swapchain->extent().height, 0.1f, 10.0f);
+            this->uniform_buffers[i].proj[1][1] *= -1;  // Adapt for vulkan
+        }
+    }
 
     // Update buffer
     this->ubo_buffer->updateFragment(this->swapchain->frameIndex(), &this->uniform_buffers[this->swapchain->frameIndex()]);

@@ -3,7 +3,7 @@
 
 struct InstanceData {
     mat4 rotation;
-    vec4 positionAndScale;
+    vec4 position_and_scale;
 };
 
 layout(binding = 0) uniform UniformBufferObject {
@@ -12,12 +12,12 @@ layout(binding = 0) uniform UniformBufferObject {
     InstanceData instances[4096];
 } ubo;
 
-layout(location = 0) in vec3 inPosition;
-layout(location = 1) in vec3 inColor;
+layout(location = 0) in vec3 in_position;
+layout(location = 1) in vec3 in_color;
 
-layout(location = 0) out vec3 fragColor;
+layout(location = 0) out vec3 out_color;
 
 void main() {
-    gl_Position = ubo.proj * ubo.view * ubo.instances[gl_InstanceIndex].rotation * vec4(vec3(ubo.instances[gl_InstanceIndex].positionAndScale.w * inPosition), 1.0);
-    fragColor = inColor;
+    gl_Position = ubo.proj * ubo.view * ubo.instances[gl_InstanceIndex].rotation * vec4(vec3(ubo.instances[gl_InstanceIndex].position_and_scale.w * in_position), 1.0);
+    out_color = in_color;
 }

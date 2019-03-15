@@ -20,7 +20,7 @@
 #include "../shared/glfw_engine.h"
 #include "../shared/vertex.hpp"
 
-class TriangleDemo : public virtual ao::vulkan::GLFWEngine {
+class TriangleDemo : public ao::vulkan::GLFWEngine {
    public:
     std::chrono::time_point<std::chrono::system_clock> clock;
     bool clock_start = false;
@@ -31,11 +31,10 @@ class TriangleDemo : public virtual ao::vulkan::GLFWEngine {
     std::unique_ptr<ao::vulkan::StagingTupleBuffer<Vertex>> vertices_buffer;
     std::unique_ptr<ao::vulkan::StagingTupleBuffer<u16>> indices_buffer;
 
-    std::map<vk::CommandBuffer, bool> to_update;
+    std::vector<ao::vulkan::SecondaryCommandBuffer*> secondary_command_buffers;
 
     explicit TriangleDemo(std::shared_ptr<ao::vulkan::EngineSettings> settings)
         : ao::vulkan::GLFWEngine(settings),
-          ao::vulkan::Engine(settings),
           vertices({{{0.0f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}}, {{0.5f, 0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}}, {{-0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}}}),
           indices({0, 1, 2, 0}){};
     virtual ~TriangleDemo() = default;
@@ -45,7 +44,5 @@ class TriangleDemo : public virtual ao::vulkan::GLFWEngine {
     void createPipelines() override;
     void createVulkanBuffers() override;
     void createSecondaryCommandBuffers() override;
-    void executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritance_info, int frame_index,
-                                        vk::CommandBuffer primary_command) override;
     void beforeCommandBuffersUpdate() override;
 };

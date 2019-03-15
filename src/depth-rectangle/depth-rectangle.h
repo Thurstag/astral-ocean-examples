@@ -21,7 +21,7 @@
 #include "../shared/ubo.hpp"
 #include "../shared/vertex.hpp"
 
-class DepthRectangleDemo : public virtual ao::vulkan::GLFWEngine {
+class DepthRectangleDemo : public ao::vulkan::GLFWEngine {
    public:
     std::chrono::time_point<std::chrono::system_clock> clock;
     bool clock_start = false;
@@ -34,11 +34,10 @@ class DepthRectangleDemo : public virtual ao::vulkan::GLFWEngine {
 
     std::vector<UniformBufferObject> uniform_buffers;
 
-    std::map<vk::CommandBuffer, bool> to_update;
+    std::vector<ao::vulkan::SecondaryCommandBuffer*> secondary_command_buffers;
 
     explicit DepthRectangleDemo(std::shared_ptr<ao::vulkan::EngineSettings> settings)
         : ao::vulkan::GLFWEngine(settings),
-          ao::vulkan::Engine(settings),
           vertices({{{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},
                     {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}},
                     {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}},
@@ -56,7 +55,5 @@ class DepthRectangleDemo : public virtual ao::vulkan::GLFWEngine {
     void createPipelines() override;
     void createVulkanBuffers() override;
     void createSecondaryCommandBuffers() override;
-    void executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritance_info, int frame_index,
-                                        vk::CommandBuffer primary_command) override;
     void beforeCommandBuffersUpdate() override;
 };

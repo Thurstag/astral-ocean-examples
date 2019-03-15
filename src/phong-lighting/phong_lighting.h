@@ -23,26 +23,29 @@
 
 using pixel_t = unsigned char;
 
-class ModelDemo : public ao::vulkan::GLFWEngine {
+class PhongLightingDemo : public ao::vulkan::GLFWEngine {
    public:
+    std::chrono::time_point<std::chrono::system_clock> startup_clock;
     std::chrono::time_point<std::chrono::system_clock> clock;
     bool clock_start = false;
 
-    std::vector<TexturedVertex> vertices;
+    std::vector<NormalVertex> vertices;
     std::vector<u32> indices;
     u32 indices_count;
 
-    std::unique_ptr<ao::vulkan::BasicDynamicArrayBuffer<UniformBufferObject>> ubo_buffer;
-    std::unique_ptr<ao::vulkan::StagingTupleBuffer<TexturedVertex, u32>> model_buffer;
-    std::tuple<vk::Image, vk::DeviceMemory, vk::ImageView> texture;
-    vk::Sampler texture_sampler;
+    std::unique_ptr<ao::vulkan::BasicDynamicArrayBuffer<UniformBufferObject>> model_ubo_buffer;
+    std::unique_ptr<ao::vulkan::StagingTupleBuffer<NormalVertex, u32>> model_buffer;
+    std::vector<UniformBufferObject> model_uniform_buffers;
+
+    std::unique_ptr<ao::vulkan::BasicDynamicArrayBuffer<UniformBufferLightObject>> light_ubo_buffer;
+    std::vector<UniformBufferLightObject> light_uniform_buffers;
 
     std::vector<ao::vulkan::SecondaryCommandBuffer*> secondary_command_buffers;
 
-    std::vector<UniformBufferObject> uniform_buffers;
+    std::tuple<glm::vec3, float, float, float> camera;
 
-    explicit ModelDemo(std::shared_ptr<ao::vulkan::EngineSettings> settings) : ao::vulkan::GLFWEngine(settings){};
-    virtual ~ModelDemo() = default;
+    explicit PhongLightingDemo(std::shared_ptr<ao::vulkan::EngineSettings> settings) : ao::vulkan::GLFWEngine(settings){};
+    virtual ~PhongLightingDemo() = default;
 
     void freeVulkan() override;
     vk::RenderPass createRenderPass() override;

@@ -11,9 +11,72 @@
 
 #include "../shared/metrics/counter_metric.hpp"
 
+void RectanglesDemo::prepareVulkan() {
+    ao::vulkan::Engine::prepareVulkan();
+
+    // Create primary wrappers
+    this->primary_command_buffers.resize(this->swapchain->size());
+    for (size_t i = 0; i < this->swapchain->size(); i++) {
+        this->primary_command_buffers[i] = new ao::vulkan::PrimaryCommandBuffer(
+            this->swapchain->commandBuffers()[i], ao::vulkan::ExecutionPolicy::eParallelUnsequenced,
+            [& metrics = this->metrics](vk::CommandBuffer command_buffer, vk::ArrayProxy<vk::CommandBuffer const> secondary_command_buffers,
+                                        vk::RenderPass render_pass, vk::Framebuffer frame, vk::Extent2D swapchain_extent, int frame_index) {
+                // Clear values
+                std::array<vk::ClearValue, 2> clear_values;
+                clear_values[0].setColor(vk::ClearColorValue());
+                clear_values[1].setDepthStencil(vk::ClearDepthStencilValue(1));
+
+                // Begin info
+                vk::CommandBufferBeginInfo begin_info(vk::CommandBufferUsageFlagBits::eRenderPassContinue);
+
+                // Render pass info
+                vk::RenderPassBeginInfo render_pass_info(render_pass, frame, vk::Rect2D().setExtent(swapchain_extent),
+                                                         static_cast<u32>(clear_values.size()), clear_values.data());
+
+                command_buffer.begin(begin_info);
+                {
+                    // Reset pools
+                    command_buffer.resetQueryPool(metrics->timestampQueryPool(), frame_index * 2, 2);
+                    command_buffer.resetQueryPool(metrics->triangleQueryPool(), frame_index * 4, 4);
+
+                    // Statistics
+                    command_buffer.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, metrics->timestampQueryPool(), frame_index * 2);
+                    command_buffer.beginQuery(metrics->triangleQueryPool(), frame_index * 4, vk::QueryControlFlags());
+
+                    // Execute secondary command buffers
+                    command_buffer.beginRenderPass(render_pass_info, vk::SubpassContents::eSecondaryCommandBuffers);
+                    {
+                        if (!secondary_command_buffers.empty()) {
+                            command_buffer.executeCommands(secondary_command_buffers);
+                        }
+                    }
+                    command_buffer.endRenderPass();
+
+                    // Statistics
+                    command_buffer.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, metrics->timestampQueryPool(), (frame_index * 2) + 1);
+                    command_buffer.endQuery(metrics->triangleQueryPool(), frame_index * 4);
+                }
+                command_buffer.end();
+            },
+            [](vk::RenderPass render_pass, vk::Framebuffer frame) {
+                return vk::CommandBufferInheritanceInfo(render_pass, 0, frame)
+                    .setPipelineStatistics(vk::QueryPipelineStatisticFlagBits::eClippingInvocations);
+            });
+    }
+
+    // Create secondary command buffers
+    this->createSecondaryCommandBuffers();
+}
+
 void RectanglesDemo::freeVulkan() {
+    // Free buffers
     this->object_buffer.reset();
     this->ubo_buffer.reset();
+
+    // Free wrappers
+    for (auto buffer : this->secondary_command_buffers) {
+        delete buffer;
+    }
 
     ao::vulkan::GLFWEngine::freeVulkan();
 }
@@ -86,7 +149,7 @@ void RectanglesDemo::createPipelines() {
             .loadShader(vk::ShaderStageFlagBits::eFragment, "assets/shaders/rectangle/frag.spv")
             .shaderStages();
 
-    // Construct the differnent states making up the pipeline
+    // Construct the different states making up the pipeline
 
     // Input assembly state
     vk::PipelineInputAssemblyStateCreateInfo input_state(vk::PipelineInputAssemblyStateCreateFlags(), vk::PrimitiveTopology::eTriangleList);
@@ -131,7 +194,7 @@ void RectanglesDemo::createPipelines() {
     // Specifies the vertex input parameters for a pipeline
 
     // Vertex input binding
-    vk::VertexInputBindingDescription vertex_input = vk::VertexInputBindingDescription().setStride(sizeof(Vertex));
+    vk::VertexInputBindingDescription vertex_input = Vertex::BindingDescription();
 
     // Inpute attribute bindings
     std::array<vk::VertexInputAttributeDescription, 2> vertex_attributes = Vertex::AttributeDescriptions();
@@ -204,62 +267,48 @@ void RectanglesDemo::createVulkanBuffers() {
 }
 
 void RectanglesDemo::createSecondaryCommandBuffers() {
-    this->command_buffers = this->secondary_command_pool->allocateCommandBuffers(vk::CommandBufferLevel::eSecondary,
-                                                                                 static_cast<u32>(RECTANGLE_COUNT * this->swapchain->size()));
+    auto command_buffers = this->secondary_command_pool->allocateCommandBuffers(vk::CommandBufferLevel::eSecondary,
+                                                                                static_cast<u32>(RECTANGLE_COUNT * this->swapchain->size()));
 
-    this->to_update = std::vector(this->swapchain->size(), true);
-    this->sub_commands.resize(this->swapchain->size());
-}
+    this->secondary_command_buffers.resize(command_buffers.size());
+    for (size_t i = 0; i < command_buffers.size(); i++) {
+        this->secondary_command_buffers[i] = new ao::vulkan::SecondaryCommandBuffer(
+            command_buffers[i], [pipeline = this->pipelines["main"], indices_count = this->indices.size(), object = this->object_buffer.get(),
+                                 &ubo_buffer = this->ubo_buffer,
+                                 cmd_index = i](vk::CommandBuffer command_buffer, vk::CommandBufferInheritanceInfo const& inheritance_info,
+                                                vk::Extent2D swapchain_extent, int frame_index) {
+                // Begin info
+                vk::CommandBufferBeginInfo begin_info =
+                    vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eRenderPassContinue).setPInheritanceInfo(&inheritance_info);
 
-void RectanglesDemo::executeSecondaryCommandBuffers(vk::CommandBufferInheritanceInfo& inheritance_info, int frame_index,
-                                                    vk::CommandBuffer primary_command) {
-    // Reset all command buffers
-    if (this->swapchain->state() == ao::vulkan::SwapchainState::eReset) {
-        for (auto& index : this->to_update) {
-            index = true;
+                command_buffer.begin(begin_info);
+                {
+                    // Set viewport & scissor
+                    command_buffer.setViewport(
+                        0, vk::Viewport(0, 0, static_cast<float>(swapchain_extent.width), static_cast<float>(swapchain_extent.height), 0, 1));
+                    command_buffer.setScissor(0, vk::Rect2D(vk::Offset2D(), swapchain_extent));
+
+                    // Bind pipeline
+                    command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline->value());
+
+                    // Draw rectangles
+                    command_buffer.bindVertexBuffers(0, object->buffer(), {0});
+                    command_buffer.bindIndexBuffer(object->buffer(), object->offset(1), vk::IndexType::eUint16);
+                    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline->layout()->value(), 0,
+                                                      pipeline->pools().front().descriptorSets()[cmd_index], {});
+
+                    command_buffer.drawIndexed(static_cast<u32>(indices_count), 1, 0, 0, 0);
+                }
+                command_buffer.end();
+            });
+    }
+
+    // Add to primary
+    for (size_t i = 0; i < RECTANGLE_COUNT; i++) {
+        for (size_t j = 0; j < this->swapchain->size(); j++) {
+            this->primary_command_buffers[j]->addSecondary(this->secondary_command_buffers[(i * this->swapchain->size()) + j]);
         }
     }
-
-    // Draw in commands
-    if (this->to_update[frame_index]) {
-        // Begin info
-        vk::CommandBufferBeginInfo begin_info =
-            vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eRenderPassContinue).setPInheritanceInfo(&inheritance_info);
-
-        auto range = boost::irange<u64>(0, RECTANGLE_COUNT);
-        std::for_each(std::execution::par_unseq, range.begin(), range.end(), [&](auto i) {
-            auto command_buffer = this->command_buffers[(i * this->swapchain->size()) + frame_index];
-
-            command_buffer.begin(begin_info);
-            {
-                // Set viewport & scissor
-                command_buffer.setViewport(0, vk::Viewport(0, 0, static_cast<float>(this->swapchain->extent().width),
-                                                           static_cast<float>(this->swapchain->extent().height), 0, 1));
-                command_buffer.setScissor(0, vk::Rect2D(vk::Offset2D(), this->swapchain->extent()));
-
-                // Bind pipeline
-                command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, this->pipelines["main"]->value());
-
-                // Draw rectangle
-                command_buffer.bindVertexBuffers(0, this->object_buffer->buffer(), {0});
-                command_buffer.bindIndexBuffer(this->object_buffer->buffer(), this->object_buffer->offset(1), vk::IndexType::eUint16);
-                command_buffer.bindDescriptorSets(
-                    vk::PipelineBindPoint::eGraphics, this->pipelines["main"]->layout()->value(), 0,
-                    this->pipelines["main"]->pools().front().descriptorSets()[(i * this->swapchain->size()) + frame_index], {});
-
-                command_buffer.drawIndexed(static_cast<u32>(this->indices.size()), 1, 0, 0, 0);
-            }
-            command_buffer.end();
-
-            // Pass to primary
-            sub_commands[frame_index][i] = command_buffer;
-        });
-
-        this->to_update[frame_index] = false;
-    }
-
-    // Pass to primary
-    primary_command.executeCommands(this->sub_commands[frame_index]);
 }
 
 void RectanglesDemo::beforeCommandBuffersUpdate() {
@@ -276,6 +325,10 @@ void RectanglesDemo::beforeCommandBuffersUpdate() {
             for (size_t j = 0; j < this->swapchain->size(); j++) {
                 this->uniform_buffers[(i * this->swapchain->size()) + j].view =
                     glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+
+                this->uniform_buffers[(i * this->swapchain->size()) + j].proj = glm::perspective(
+                    glm::radians(45.0f), this->swapchain->extent().width / static_cast<float>(this->swapchain->extent().height), 0.1f, 10.0f);
+                this->uniform_buffers[(i * this->swapchain->size()) + j].proj[1][1] *= -1;  // Adapt for vulkan
             }
         }
 
@@ -285,15 +338,20 @@ void RectanglesDemo::beforeCommandBuffersUpdate() {
     // Delta time
     float delta_time = std::chrono::duration<float, std::chrono::seconds::period>(std::chrono::system_clock::now() - this->clock).count();
 
+    if (this->swapchain->state() == ao::vulkan::SwapchainState::eReset) {
+        for (size_t i = 0; i < this->uniform_buffers.size(); i++) {
+            this->uniform_buffers[i].proj = glm::perspective(
+                glm::radians(45.0f), this->swapchain->extent().width / static_cast<float>(this->swapchain->extent().height), 0.1f, 10.0f);
+            this->uniform_buffers[i].proj[1][1] *= -1;  // Adapt for vulkan
+        }
+    }
+
     // Update uniform buffers
     auto range = boost::irange<u64>(0, RECTANGLE_COUNT);
     std::for_each(std::execution::par_unseq, range.begin(), range.end(), [&](auto i) {
         this->uniform_buffers[(i * this->swapchain->size()) + this->swapchain->frameIndex()].rotation =
             glm::rotate(glm::mat4(1.0f), delta_time * glm::radians(this->rotations[i].first), this->rotations[i].second);
         this->uniform_buffers[(i * this->swapchain->size()) + this->swapchain->frameIndex()].scale = (0.25f * glm::cos(delta_time)) + 0.75f;
-        this->uniform_buffers[(i * this->swapchain->size()) + this->swapchain->frameIndex()].proj = glm::perspective(
-            glm::radians(45.0f), this->swapchain->extent().width / static_cast<float>(this->swapchain->extent().height), 0.1f, 10.0f);
-        this->uniform_buffers[(i * this->swapchain->size()) + this->swapchain->frameIndex()].proj[1][1] *= -1;  // Adapt for vulkan
 
         // Update buffer
         this->ubo_buffer->updateFragment((i * this->swapchain->size()) + this->swapchain->frameIndex(),
