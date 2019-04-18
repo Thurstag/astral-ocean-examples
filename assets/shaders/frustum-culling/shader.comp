@@ -1,0 +1,71 @@
+#version 450
+
+#define FRUSTUM_PLANES_COUNT 6
+#define gl_GlobalInvocationIndex (gl_GlobalInvocationID.x \
+    + (gl_GlobalInvocationID.y * gl_NumWorkGroups.x * gl_WorkGroupSize.x) \
+    + (gl_GlobalInvocationID.z * gl_NumWorkGroups.x * gl_WorkGroupSize.x * gl_NumWorkGroups.y * gl_WorkGroupSize.y))
+
+struct VkDrawIndexedIndirectCommand {
+    uint indexCount;
+    uint instanceCount;
+    uint firstIndex;
+    uint vertexOffset;
+    uint firstInstance;
+};
+
+struct VkDispatchIndirectCommand {
+    uint x;
+    uint y;
+    uint z;
+};
+
+struct InstanceData {
+    mat4 rotation;
+    vec4 position_and_scale;
+};
+
+layout(binding = 0, std430) buffer DrawIndexedIndirectCommand {
+    VkDrawIndexedIndirectCommand indexed_command;
+};
+
+layout(binding = 1, std430) buffer DispatchIndirectCommand {
+    VkDispatchIndirectCommand dispatch_command;
+};
+
+layout(binding = 2, std430) buffer InstanceEnabled {
+    float instances_enabled[];
+};
+
+layout(binding = 3, std140) readonly buffer Instances {
+    InstanceData instances[];
+};
+
+layout(binding = 4, std140) readonly buffer FrustumPlanes {
+    vec4 frustum_planes[FRUSTUM_PLANES_COUNT];
+};
+
+// Function to check if position is inside camera view
+bool frustum_culling(vec4 position_and_scale) {
+    for(int i = 0; i < FRUSTUM_PLANES_COUNT; i++) {
+        if (dot(vec4(position_and_scale.xyz, 1.0), frustum_planes[i]) + position_and_scale.w < 0.0) { // Consider object as a sphere with a radius of 'position_and_scale.w' / TODO: Optimize me
+            return false;
+        }
+    }
+    return true;
+}
+
+void main() {
+    uint index = gl_GlobalInvocationIndex;
+
+    // Check instance
+    bool visible = frustum_culling(instances[index].position_and_scale);
+
+    // Increment instance count
+    if (visible) {
+        atomicAdd(indexed_command.instanceCount, 1);
+        atomicAdd(dispatch_command.x, 1);
+    }
+
+    // Update float array
+    instances_enabled[index] = visible ? 1.0 : 0.0;
+}

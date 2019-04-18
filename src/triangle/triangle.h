@@ -31,7 +31,7 @@ class TriangleDemo : public ao::vulkan::GLFWEngine {
     std::unique_ptr<ao::vulkan::StagingTupleBuffer<Vertex>> vertices_buffer;
     std::unique_ptr<ao::vulkan::StagingTupleBuffer<u16>> indices_buffer;
 
-    std::vector<ao::vulkan::SecondaryCommandBuffer*> secondary_command_buffers;
+    std::vector<ao::vulkan::GraphicsPrimaryCommandBuffer::SecondaryCommandBuffer*> secondary_command_buffers;
 
     explicit TriangleDemo(std::shared_ptr<ao::vulkan::EngineSettings> settings)
         : ao::vulkan::GLFWEngine(settings),

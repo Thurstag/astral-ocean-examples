@@ -23,12 +23,12 @@ int main(int argc, char* argv[]) {
     // Define settings
     std::shared_ptr<ao::vulkan::EngineSettings> settings = std::make_shared<ao::vulkan::EngineSettings>();
     settings->get<std::string>(ao::vulkan::settings::WindowTitle) = std::string("Textured Rectangle");
-    settings->get<u64>(ao::vulkan::settings::WindowWidth) = 1280;
-    settings->get<u64>(ao::vulkan::settings::WindowHeight) = 720;
+    settings->get<u32>(ao::vulkan::settings::WindowWidth) = 1280;
+    settings->get<u32>(ao::vulkan::settings::WindowHeight) = 720;
     settings->get<bool>(ao::vulkan::settings::ValidationLayers) = true;
 
     ao::vulkan::Engine* engine;
-    bool exceptionThrown = false;
+    bool exception_thrown = false;
     try {
         engine = new TexturedRectangle(settings);
 
@@ -36,16 +36,16 @@ int main(int argc, char* argv[]) {
         engine->run();
     } catch (ao::core::Exception& e) {
         LOGGER << ao::core::Logger::Level::fatal << e;
-        exceptionThrown = true;
+        exception_thrown = true;
     } catch (std::exception& e) {
         LOGGER << ao::core::Logger::Level::fatal << ao::core::Exception(e.what(), false);
-        exceptionThrown = true;
+        exception_thrown = true;
     } catch (...) {
         LOGGER << ao::core::Logger::Level::fatal << "Unknown exception";
-        exceptionThrown = true;
+        exception_thrown = true;
     }
 
-    if (exceptionThrown) {
+    if (exception_thrown) {
         engine->freeVulkan();
 
         std::cout << "Press enter to continue";

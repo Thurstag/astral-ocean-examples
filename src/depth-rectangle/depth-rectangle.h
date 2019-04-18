@@ -34,7 +34,7 @@ class DepthRectangleDemo : public ao::vulkan::GLFWEngine {
 
     std::vector<UniformBufferObject> uniform_buffers;
 
-    std::vector<ao::vulkan::SecondaryCommandBuffer*> secondary_command_buffers;
+    std::vector<ao::vulkan::GraphicsPrimaryCommandBuffer::SecondaryCommandBuffer*> secondary_command_buffers;
 
     explicit DepthRectangleDemo(std::shared_ptr<ao::vulkan::EngineSettings> settings)
         : ao::vulkan::GLFWEngine(settings),

@@ -40,7 +40,7 @@ class PhongLightingDemo : public ao::vulkan::GLFWEngine {
     std::unique_ptr<ao::vulkan::BasicDynamicArrayBuffer<UniformBufferLightObject>> light_ubo_buffer;
     std::vector<UniformBufferLightObject> light_uniform_buffers;
 
-    std::vector<ao::vulkan::SecondaryCommandBuffer*> secondary_command_buffers;
+    std::vector<ao::vulkan::GraphicsPrimaryCommandBuffer::SecondaryCommandBuffer*> secondary_command_buffers;
 
     std::tuple<glm::vec3, float, float, float> camera;
 

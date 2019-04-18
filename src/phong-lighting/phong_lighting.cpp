@@ -363,10 +363,6 @@ void PhongLightingDemo::createVulkanBuffers() {
     this->light_ubo_buffer->init(vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, vk::MemoryPropertyFlagBits::eHostVisible,
                                  ao::vulkan::Buffer::CalculateUBOAligmentSize(this->device->physical(), sizeof(UniformBufferLightObject)));
 
-    // Map buffers
-    this->model_ubo_buffer->map();
-    this->light_ubo_buffer->map();
-
     // Resize uniform buffers vectors
     this->model_uniform_buffers.resize(this->swapchain->size());
     this->light_uniform_buffers.resize(this->swapchain->size());
@@ -399,7 +395,7 @@ void PhongLightingDemo::createSecondaryCommandBuffers() {
 
     this->secondary_command_buffers.resize(command_buffers.size());
     for (size_t i = 0; i < command_buffers.size(); i++) {
-        this->secondary_command_buffers[i] = new ao::vulkan::SecondaryCommandBuffer(
+        this->secondary_command_buffers[i] = new ao::vulkan::GraphicsPrimaryCommandBuffer::SecondaryCommandBuffer(
             command_buffers[i],
             [main_pipeline = this->pipelines["main"], light_pipeline = this->pipelines["light-cube"], indices_count = this->indices_count,
              model = this->model_buffer.get()](vk::CommandBuffer command_buffer, vk::CommandBufferInheritanceInfo const& inheritance_info,
@@ -477,7 +473,7 @@ void PhongLightingDemo::beforeCommandBuffersUpdate() {
     /* CAMERA PART */
 
     // Constants
-    constexpr float RotationTarget = 45.0f * boost::math::constants::pi<float>() / 180;
+    static constexpr float RotationTarget = 45.0f * boost::math::constants::pi<float>() / 180;
     float delta_time = std::chrono::duration<float, std::chrono::seconds::period>(std::chrono::system_clock::now() - this->clock).count();
     float elapsed_time = std::chrono::duration<float, std::chrono::seconds::period>(std::chrono::system_clock::now() - this->startup_clock).count();
 

@@ -6,7 +6,7 @@ cp -r assets assets_compiled
 echo "[INFO] Copy assets folder (assets_compiled)"
 
 # Find shaders
-files=$(find assets_compiled/ -iname *.frag -o -iname *.vert)
+files=$(find assets_compiled/ -iname *.frag -o -iname *.vert -o -iname *.comp)
 
 # Compile shaders
 for file in $files; do

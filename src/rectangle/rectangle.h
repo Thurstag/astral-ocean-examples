@@ -32,7 +32,7 @@ class RectangleDemo : public ao::vulkan::GLFWEngine {
     std::unique_ptr<ao::vulkan::StagingTupleBuffer<Vertex, u16>> model_buffer;
     std::unique_ptr<ao::vulkan::BasicDynamicArrayBuffer<UniformBufferObject>> ubo_buffer;
 
-    std::vector<ao::vulkan::SecondaryCommandBuffer*> secondary_command_buffers;
+    std::vector<ao::vulkan::GraphicsPrimaryCommandBuffer::SecondaryCommandBuffer*> secondary_command_buffers;
 
     std::vector<UniformBufferObject> uniform_buffers;
 

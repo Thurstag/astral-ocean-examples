@@ -14,7 +14,7 @@
 #include <boost/range/irange.hpp>
 #include <gli/gli.hpp>
 
-constexpr char const* MipMapKey = "mimap.enable";
+static constexpr char const* MipMapKey = "mimap.enable";
 
 void MipmapDemo::setUpTexture() {
     /* RESET PART */
@@ -133,8 +133,8 @@ void MipmapDemo::setUpTexture() {
 void MipmapDemo::onKeyEventCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
     ao::vulkan::GLFWEngine::onKeyEventCallback(window, key, scancode, action, mods);
 
+    // Toggle mimap
     if (key == GLFW_KEY_T && action == GLFW_PRESS) {
-        // Toggle mimap
         this->settings_->get<bool>(MipMapKey) = !this->settings_->get<bool>(MipMapKey);
 
         // Update texture
@@ -391,9 +391,6 @@ void MipmapDemo::createVulkanBuffers() {
     this->ubo_buffer->init(vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, vk::MemoryPropertyFlagBits::eHostVisible,
                            ao::vulkan::Buffer::CalculateUBOAligmentSize(this->device->physical(), sizeof(UniformBufferObject)));
 
-    // Map buffer
-    this->ubo_buffer->map();
-
     // Resize uniform buffers vector
     this->uniform_buffers.resize(this->swapchain->size());
 
@@ -407,7 +404,7 @@ void MipmapDemo::createSecondaryCommandBuffers() {
 
     this->secondary_command_buffers.resize(command_buffers.size());
     for (size_t i = 0; i < command_buffers.size(); i++) {
-        this->secondary_command_buffers[i] = new ao::vulkan::SecondaryCommandBuffer(
+        this->secondary_command_buffers[i] = new ao::vulkan::GraphicsPrimaryCommandBuffer::SecondaryCommandBuffer(
             command_buffers[i],
             [pipeline = this->pipelines["main"], indices_count = this->indices_count, model = this->model_buffer.get(),
              &ubo_buffer = this->ubo_buffer](vk::CommandBuffer command_buffer, vk::CommandBufferInheritanceInfo const& inheritance_info,
@@ -469,7 +466,7 @@ void MipmapDemo::beforeCommandBuffersUpdate() {
     /* CAMERA PART */
 
     // Constants
-    constexpr float RotationTarget = 45.0f * boost::math::constants::pi<float>() / 180;
+    static constexpr float RotationTarget = 45.0f * boost::math::constants::pi<float>() / 180;
     float delta_time = std::chrono::duration<float, std::chrono::seconds::period>(std::chrono::system_clock::now() - this->clock).count();
 
     // Update camera

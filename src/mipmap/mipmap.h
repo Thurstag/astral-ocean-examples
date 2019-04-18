@@ -37,7 +37,7 @@ class MipmapDemo : public ao::vulkan::GLFWEngine {
     std::tuple<vk::Image, vk::DeviceMemory, vk::ImageView> texture;
     vk::Sampler texture_sampler;
 
-    std::vector<ao::vulkan::SecondaryCommandBuffer*> secondary_command_buffers;
+    std::vector<ao::vulkan::GraphicsPrimaryCommandBuffer::SecondaryCommandBuffer*> secondary_command_buffers;
 
     std::tuple<glm::vec3, float, float, float> camera;
     std::vector<UniformBufferObject> uniform_buffers;

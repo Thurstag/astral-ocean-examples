@@ -17,6 +17,6 @@ layout(location = 6) in vec4 in_instance_position_and_scale;
 layout(location = 0) out vec3 out_color;
 
 void main() {
-    gl_Position = ubo.proj * ubo.view * in_instance_rotation * vec4(vec3(in_instance_position_and_scale.w * in_position) + in_instance_position_and_scale.xyz, 1.0);
+    gl_Position = ubo.proj * ubo.view * vec4((in_instance_rotation * vec4(vec3(in_instance_position_and_scale.w * in_position), 1.0)).xyz + in_instance_position_and_scale.xyz, 1.0);
     out_color = in_color;
 }

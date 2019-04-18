@@ -70,8 +70,8 @@ void ao::vulkan::GLFWEngine::initWindow() {
     }
 
     // Create window
-    this->window = glfwCreateWindow(static_cast<int>(this->settings_->get<u64>(ao::vulkan::settings::WindowWidth)),
-                                    static_cast<int>(this->settings_->get<u64>(ao::vulkan::settings::WindowHeight)),
+    this->window = glfwCreateWindow(static_cast<int>(this->settings_->get<u32>(ao::vulkan::settings::WindowWidth)),
+                                    static_cast<int>(this->settings_->get<u32>(ao::vulkan::settings::WindowHeight)),
                                     this->settings_->get<std::string>(ao::vulkan::settings::WindowTitle).c_str(), nullptr, nullptr);
     glfwSetWindowUserPointer(this->window, this);
 
@@ -130,7 +130,7 @@ void ao::vulkan::GLFWEngine::initVulkan() {
         this->device->logical(), vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
         this->device->queues()->at(vk::to_string(vk::QueueFlagBits::eGraphics)).family_index, ao::vulkan::CommandPoolAccessMode::eConcurrent);
 
-    // Init metric module (TODO: DrawCall per second)
+    // Init metric module
     this->metrics = std::make_unique<ao::vulkan::MetricModule>(this->device);
     this->metrics->add("CPU", new ao::vulkan::BasicDurationMetric<std::chrono::duration<double, std::milli>>("ms"));
     this->metrics->add(
@@ -143,10 +143,10 @@ void ao::vulkan::GLFWEngine::initVulkan() {
 void ao::vulkan::GLFWEngine::prepareVulkan() {
     ao::vulkan::Engine::prepareVulkan();
 
-    // Create primary wrappers
+    // Create primary command buffers
     this->primary_command_buffers.resize(this->swapchain->size());
     for (size_t i = 0; i < this->swapchain->size(); i++) {
-        this->primary_command_buffers[i] = new ao::vulkan::PrimaryCommandBuffer(
+        this->primary_command_buffers[i] = new ao::vulkan::GraphicsPrimaryCommandBuffer(
             this->swapchain->commandBuffers()[i], ao::vulkan::ExecutionPolicy::eSequenced,
             [& metrics = this->metrics](vk::CommandBuffer command_buffer, vk::ArrayProxy<vk::CommandBuffer const> secondary_command_buffers,
                                         vk::RenderPass render_pass, vk::Framebuffer frame, vk::Extent2D swapchain_extent, int frame_index) {
@@ -165,12 +165,16 @@ void ao::vulkan::GLFWEngine::prepareVulkan() {
                 command_buffer.begin(begin_info);
                 {
                     // Reset pools
-                    command_buffer.resetQueryPool(metrics->timestampQueryPool(), frame_index * 2, 2);
-                    command_buffer.resetQueryPool(metrics->triangleQueryPool(), frame_index * 4, 4);
+                    if (frame_index == 0) {
+                        command_buffer.resetQueryPool(metrics->timestampQueryPool(), 0, 2);
+                        command_buffer.resetQueryPool(metrics->triangleQueryPool(), 0, 4);
+                    }
 
                     // Statistics
-                    command_buffer.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, metrics->timestampQueryPool(), frame_index * 2);
-                    command_buffer.beginQuery(metrics->triangleQueryPool(), frame_index * 4, vk::QueryControlFlags());
+                    if (frame_index == 0) {
+                        command_buffer.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, metrics->timestampQueryPool(), 0);
+                        command_buffer.beginQuery(metrics->triangleQueryPool(), 0, vk::QueryControlFlags());
+                    }
 
                     // Execute secondary command buffers
                     command_buffer.beginRenderPass(render_pass_info, vk::SubpassContents::eSecondaryCommandBuffers);
@@ -182,8 +186,10 @@ void ao::vulkan::GLFWEngine::prepareVulkan() {
                     command_buffer.endRenderPass();
 
                     // Statistics
-                    command_buffer.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, metrics->timestampQueryPool(), (frame_index * 2) + 1);
-                    command_buffer.endQuery(metrics->triangleQueryPool(), frame_index * 4);
+                    if (frame_index == 0) {
+                        command_buffer.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, metrics->timestampQueryPool(), 1);
+                        command_buffer.endQuery(metrics->triangleQueryPool(), 0);
+                    }
                 }
                 command_buffer.end();
             },
@@ -197,29 +203,22 @@ void ao::vulkan::GLFWEngine::prepareVulkan() {
     this->createSecondaryCommandBuffers();
 }
 
+void ao::vulkan::GLFWEngine::createVulkanObjects() {
+    this->createPipelines();
+    this->createVulkanBuffers();
+}
+
 void ao::vulkan::GLFWEngine::render() {
-    auto cpuFrame = static_cast<ao::vulkan::DurationMetric*>((*this->metrics)["CPU"]);
+    auto cpu_frame = static_cast<ao::vulkan::DurationMetric*>((*this->metrics)["CPU"]);
     auto fps = static_cast<ao::vulkan::CounterMetric<std::chrono::seconds, int>*>((*this->metrics)["Frame/s"]);
     auto triangle_count = static_cast<ao::vulkan::CounterCommandBufferMetric<std::chrono::seconds, u64>*>((*this->metrics)["Triangle/s"]);
 
     // Render
-    cpuFrame->start();
+    cpu_frame->start();
     ao::vulkan::Engine::render();
-    cpuFrame->stop();
+    cpu_frame->stop();
     fps->increment();
     triangle_count->update();
-
-    // Poll events after rendering
-    glfwPollEvents();
-
-    // Display metrics
-    if (fps->hasToBeReset()) {
-        glfwSetWindowTitle(
-            this->window, fmt::format("{} [{}]", this->settings_->get<std::string>(ao::vulkan::settings::WindowTitle), this->metrics->str()).c_str());
-
-        // Reset metrics
-        this->metrics->reset();
-    }
 }
 
 bool ao::vulkan::GLFWEngine::loopingCondition() const {
@@ -246,18 +245,33 @@ void ao::vulkan::GLFWEngine::updateCommandBuffers() {
         }
     }
 
-    auto index = this->swapchain->frameIndex();
-
     // Update command buffer
-    if (this->primary_command_buffers[index]->state() == ao::vulkan::CommandBufferState::eOutdate) {
-        this->primary_command_buffers[index]->update(this->render_pass, this->swapchain->currentFrame(), this->swapchain->extent(), index);
+    if (this->primary_command_buffers[this->swapchain->frameIndex()]->state() == ao::vulkan::CommandBufferState::eOutdate) {
+        this->primary_command_buffers[this->swapchain->frameIndex()]->update(this->render_pass, this->swapchain->currentFrame(),
+                                                                             this->swapchain->extent(), this->swapchain->frameIndex());
     }
 }
 
-void ao::vulkan::GLFWEngine::afterFrame() {}
+void ao::vulkan::GLFWEngine::afterFrame() {
+    auto fps = static_cast<ao::vulkan::CounterMetric<std::chrono::seconds, int>*>((*this->metrics)["Frame/s"]);
+
+    // Poll events after rendering
+    glfwPollEvents();
+
+    // Display metrics
+    if (fps->hasToBeReset()) {
+        glfwSetWindowTitle(
+            this->window, fmt::format("{} [{}]", this->settings_->get<std::string>(ao::vulkan::settings::WindowTitle), this->metrics->str()).c_str());
+
+        // Reset metrics
+        this->metrics->reset();
+    }
+}
 
 std::vector<ao::vulkan::QueueRequest> ao::vulkan::GLFWEngine::requestQueues() const {
     auto families = this->device->physical().getQueueFamilyProperties();
+
+    // TODO: Refactor me
 
     // Get indices
     auto transfer_index = ao::vulkan::utilities::findQueueFamilyIndex(families, vk::QueueFlagBits::eTransfer);

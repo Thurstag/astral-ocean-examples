@@ -38,7 +38,7 @@ class RectanglesDemo : public ao::vulkan::GLFWEngine {
     std::vector<UniformBufferObject> uniform_buffers;
     std::vector<std::pair<float, glm::vec3>> rotations;
 
-    std::vector<ao::vulkan::SecondaryCommandBuffer*> secondary_command_buffers;
+    std::vector<ao::vulkan::GraphicsPrimaryCommandBuffer::SecondaryCommandBuffer*> secondary_command_buffers;
 
     explicit RectanglesDemo(std::shared_ptr<ao::vulkan::EngineSettings> settings)
         : ao::vulkan::GLFWEngine(settings),

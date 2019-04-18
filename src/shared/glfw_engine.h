@@ -19,14 +19,14 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
-#include "command_buffer/primary_command_buffer.h"
+#include "command_buffer/graphics_primary_command_buffer.h"
 #include "metrics/metric_module.h"
 #include "utilities/glfw.h"
 
 namespace ao::vulkan {
     namespace settings {
-        constexpr char* WindowResizable = "window.resizable";
-        constexpr char* WindowTitle = "window.title";
+        static constexpr char* WindowResizable = "window.resizable";
+        static constexpr char* WindowTitle = "window.title";
     }  // namespace settings
 
     class GLFWEngine : public Engine {
@@ -83,7 +83,7 @@ namespace ao::vulkan {
         void saveCache(std::string const& directory, std::string const& filename, vk::PipelineCache cache);
 
        protected:
-        std::vector<PrimaryCommandBuffer*> primary_command_buffers;
+        std::vector<GraphicsPrimaryCommandBuffer*> primary_command_buffers;
         std::unique_ptr<CommandPool> secondary_command_pool;
         GLFWwindow* window;
 
@@ -96,21 +96,34 @@ namespace ao::vulkan {
          */
         virtual void createSecondaryCommandBuffers() = 0;
 
+        /**
+         * @brief Create pipelines
+         *
+         */
+        virtual void createPipelines() = 0;
+
+        /**
+         * @brief Create vulkan buffers
+         *
+         */
+        virtual void createVulkanBuffers() = 0;
+
         void initWindow() override;
         vk::SurfaceKHR createSurface() override;
         void freeWindow() override;
         bool isIconified() const override;
 
         void freeVulkan() override;
-        void initVulkan() override;
-        void prepareVulkan() override;
-        void render() override;
+        virtual void initVulkan() override;
+        virtual void prepareVulkan() override;
+        void createVulkanObjects() override;
+        virtual void render() override;
         bool loopingCondition() const override;
         void waitMaximized() override;
 
         std::vector<vk::PhysicalDeviceFeatures> deviceFeatures() const override;
         std::vector<char const*> instanceExtensions() const override;
-        void updateCommandBuffers() override;
+        virtual void updateCommandBuffers() override;
 
         virtual void afterFrame() override;
 

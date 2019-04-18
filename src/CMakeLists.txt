@@ -1,5 +1,5 @@
 # Define executables
-set(DEMOS triangle n-rectangles rectangle depth-rectangle textured-rectangle model mipmap instancing texture-array phong-lighting)
+set(DEMOS triangle n-rectangles rectangle depth-rectangle textured-rectangle model mipmap instancing texture-array phong-lighting frustum-culling)
 
 # Define a function that can re-create sub-directories in visual studio
 function(create_sub_directories FILE_LIST CURRENT_DIRECTORY BASE_DIRECTORY)

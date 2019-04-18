@@ -146,7 +146,7 @@ void TriangleDemo::createSecondaryCommandBuffers() {
 
     this->secondary_command_buffers.resize(command_buffers.size());
     for (size_t i = 0; i < command_buffers.size(); i++) {
-        this->secondary_command_buffers[i] = new ao::vulkan::SecondaryCommandBuffer(
+        this->secondary_command_buffers[i] = new ao::vulkan::GraphicsPrimaryCommandBuffer::SecondaryCommandBuffer(
             command_buffers[i],
             [pipeline = this->pipelines["main"], indices_count = this->indices.size(), vertices_buffer = this->vertices_buffer.get(),
              indices_buffer = this->indices_buffer.get()](vk::CommandBuffer command_buffer, vk::CommandBufferInheritanceInfo const& inheritance_info,

@@ -162,9 +162,6 @@ void RectangleDemo::createVulkanBuffers() {
     this->ubo_buffer->init(vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, vk::MemoryPropertyFlagBits::eHostVisible,
                            ao::vulkan::Buffer::CalculateUBOAligmentSize(this->device->physical(), sizeof(UniformBufferObject)));
 
-    // Map buffer
-    this->ubo_buffer->map();
-
     // Resize uniform buffers vector
     this->uniform_buffers.resize(this->swapchain->size());
 
@@ -190,7 +187,7 @@ void RectangleDemo::createSecondaryCommandBuffers() {
 
     this->secondary_command_buffers.resize(command_buffers.size());
     for (size_t i = 0; i < command_buffers.size(); i++) {
-        this->secondary_command_buffers[i] = new ao::vulkan::SecondaryCommandBuffer(
+        this->secondary_command_buffers[i] = new ao::vulkan::GraphicsPrimaryCommandBuffer::SecondaryCommandBuffer(
             command_buffers[i], [pipeline = this->pipelines["main"], indices_count = this->indices.size(), rectangle = this->model_buffer.get()](
                                     vk::CommandBuffer command_buffer, vk::CommandBufferInheritanceInfo const& inheritance_info,
                                     vk::Extent2D swapchain_extent, int frame_index) {

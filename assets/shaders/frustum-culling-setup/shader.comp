@@ -1,0 +1,81 @@
+#version 450
+
+#define gl_GlobalInvocationIndex (gl_GlobalInvocationID.x \
+    + (gl_GlobalInvocationID.y * gl_NumWorkGroups.x * gl_WorkGroupSize.x) \
+    + (gl_GlobalInvocationID.z * gl_NumWorkGroups.x * gl_WorkGroupSize.x * gl_NumWorkGroups.y * gl_WorkGroupSize.y))
+
+struct VkDrawIndexedIndirectCommand {
+    uint indexCount;
+    uint instanceCount;
+    uint firstIndex;
+    uint vertexOffset;
+    uint firstInstance;
+};
+
+struct VkDispatchIndirectCommand {
+    uint x;
+    uint y;
+    uint z;
+};
+
+layout(binding = 0, std430) writeonly buffer DrawIndexedIndirectCommand {
+    VkDrawIndexedIndirectCommand indexed_command;
+};
+
+layout(binding = 1, std430) writeonly buffer DispatchIndirectCommand {
+    VkDispatchIndirectCommand dispatch_command;
+};
+
+layout(binding = 2, std140) writeonly buffer FrustumPlanes {
+    vec4 frustum_planes[6];
+};
+
+layout(binding = 3) uniform UniformBufferObject {
+    mat4 view;
+    mat4 proj;
+} ubo;
+
+vec4 calculate_frustum_plane(mat4 world_to_projection, uint index) {
+    vec4 out_;
+
+    // Extract
+    switch (index) {
+        case 0:
+            out_ = vec4(world_to_projection[0].w + world_to_projection[0].x, world_to_projection[1].w + world_to_projection[1].x, world_to_projection[2].w + world_to_projection[2].x, world_to_projection[3].w + world_to_projection[3].x);
+            break; 
+
+        case 1:
+            out_ = vec4(world_to_projection[0].w - world_to_projection[0].x, world_to_projection[1].w - world_to_projection[1].x, world_to_projection[2].w - world_to_projection[2].x, world_to_projection[3].w - world_to_projection[3].x);
+            break; 
+
+        case 2:
+            out_ = vec4(world_to_projection[0].w - world_to_projection[0].y, world_to_projection[1].w - world_to_projection[1].y, world_to_projection[2].w - world_to_projection[2].y, world_to_projection[3].w - world_to_projection[3].y);
+            break; 
+
+        case 3:
+            out_ = vec4(world_to_projection[0].w + world_to_projection[0].y, world_to_projection[1].w + world_to_projection[1].y, world_to_projection[2].w + world_to_projection[2].y, world_to_projection[3].w + world_to_projection[3].y);
+            break; 
+
+        case 4:
+            out_ = vec4(world_to_projection[0].w + world_to_projection[0].z, world_to_projection[1].w + world_to_projection[1].z, world_to_projection[2].w + world_to_projection[2].z, world_to_projection[3].w + world_to_projection[3].z);
+            break; 
+
+        case 5:
+            out_ = vec4(world_to_projection[0].w - world_to_projection[0].z, world_to_projection[1].w - world_to_projection[1].z, world_to_projection[2].w - world_to_projection[2].z, world_to_projection[3].w - world_to_projection[3].z);
+            break; 
+    }
+
+    // Resize
+    return out_ / pow(dot(out_, out_), 0.5);
+}
+
+void main() {
+    uint index = gl_GlobalInvocationIndex;
+
+    if (index == 0) { // Reset buffers
+        indexed_command.instanceCount = 0;
+        dispatch_command.x = 0;
+    } else { // Calculate frustum planes
+        frustum_planes[index - 1] = calculate_frustum_plane(ubo.proj * ubo.view, index - 1);
+    }
+}

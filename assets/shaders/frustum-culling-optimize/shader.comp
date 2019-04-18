@@ -1,0 +1,80 @@
+#version 450
+
+#define gl_GlobalInvocationIndex (gl_GlobalInvocationID.x \
+    + (gl_GlobalInvocationID.y * gl_NumWorkGroups.x * gl_WorkGroupSize.x) \
+    + (gl_GlobalInvocationID.z * gl_NumWorkGroups.x * gl_WorkGroupSize.x * gl_NumWorkGroups.y * gl_WorkGroupSize.y))
+
+struct VkDrawIndexedIndirectCommand {
+    uint indexCount;
+    uint instanceCount;
+    uint firstIndex;
+    uint vertexOffset;
+    uint firstInstance;
+};
+
+struct InstanceData {
+    mat4 rotation;
+    vec4 position_and_scale;
+};
+
+layout(binding = 0, std430) readonly buffer DrawIndexedIndirectCommand {
+    VkDrawIndexedIndirectCommand indexed_command;
+};
+
+layout(binding = 1, std430) readonly buffer InstanceEnabled {
+    float instances_enabled[];
+};
+
+layout(binding = 2, std140) buffer Instances {
+    InstanceData instances[];
+};
+
+// Function to swap instances
+void swap_instances(int index, int index_2) {
+    InstanceData temp = instances[index];
+
+    instances[index] = instances[index_2];
+    instances[index_2] = temp;
+}
+
+void main() {
+    uint index = gl_GlobalInvocationIndex;
+
+    // Search instance
+    int instance_index = 0, outbound_index = 0;
+    for(int i = 0, instance_enabled_index = 0; i < instances_enabled.length(); i++) {
+        // Check if element is the wanted one
+        if (index == instance_enabled_index && instances_enabled[i] > 0.0) {
+            break;
+        }
+
+        if (instances_enabled[i] > 0.0) {
+            if (i >= indexed_command.instanceCount) {
+                outbound_index++;
+            }
+            instance_enabled_index++;
+        }
+        instance_index++;
+    }
+
+    // Instance is already at the right index
+    if (instance_index < indexed_command.instanceCount) {
+        return;
+    }
+
+    // Search an instance disabled to swap with 'instances[instance_index]'
+    for(int i = 0, instance_disabled_index = 0; i < indexed_command.instanceCount; i++) {
+        if (outbound_index == instance_disabled_index && instances_enabled[i] == 0.0) {
+            // Swap elements
+            swap_instances(instance_index, i);
+
+            return; // Quit
+        }
+
+        if (instances_enabled[i] == 0.0) {
+            instance_disabled_index++;
+        }
+    }
+
+    // Warning: this is an unreachable code
+}

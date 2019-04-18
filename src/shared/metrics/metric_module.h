@@ -49,6 +49,13 @@ namespace ao::vulkan {
         void add(std::string name, Metric* metric);
 
         /**
+         * @brief Remove a metric
+         *
+         * @param name Metric's name
+         */
+        void remove(std::string name);
+
+        /**
          * @brief Reset
          *
          */

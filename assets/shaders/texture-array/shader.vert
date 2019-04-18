@@ -21,6 +21,6 @@ layout(location = 6) in vec4 in_instance_position_and_scale;
 layout(location = 0) out vec3 out_texture_coord;
 
 void main() {
-    gl_Position = ubo.proj * ubo.view * in_instance_rotation * vec4(vec3(in_instance_position_and_scale.w * vec3(in_position, 0.0)) + in_instance_position_and_scale.xyz, 1.0);
+    gl_Position = ubo.proj * ubo.view * vec4((in_instance_rotation * vec4(vec2(in_instance_position_and_scale.w * in_position), 0.0, 1.0)).xyz + in_instance_position_and_scale.xyz, 1.0);
     out_texture_coord = vec3(in_texture_coord, gl_InstanceIndex + push_constants.array_layer_index);
 }

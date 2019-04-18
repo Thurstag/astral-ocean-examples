@@ -38,6 +38,20 @@ void ao::vulkan::MetricModule::add(std::string name, ao::vulkan::Metric* metric)
     this->metrics[name] = metric;
 }
 
+void ao::vulkan::MetricModule::remove(std::string name) {
+    auto it = std::find_if(this->metrics.begin(), this->metrics.end(),
+                           [name](std::pair<std::string, ao::vulkan::Metric*> const& pair) { return name == pair.first; });
+
+    // Check iterator
+    if (it == this->metrics.end()) {
+        throw core::Exception(fmt::format("Fail to find metric: {0}", name));
+    }
+
+    // Delete
+    delete it->second;
+    this->metrics.erase(it);
+}
+
 void ao::vulkan::MetricModule::reset() {
     for (auto& pair : this->metrics) {
         pair.second->reset();

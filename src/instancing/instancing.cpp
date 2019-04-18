@@ -228,7 +228,7 @@ void InstancingDemo::createSecondaryCommandBuffers() {
 
     this->secondary_command_buffers.resize(command_buffers.size());
     for (size_t i = 0; i < command_buffers.size(); i++) {
-        this->secondary_command_buffers[i] = new ao::vulkan::SecondaryCommandBuffer(
+        this->secondary_command_buffers[i] = new ao::vulkan::GraphicsPrimaryCommandBuffer::SecondaryCommandBuffer(
             command_buffers[i], [pipeline = this->pipelines["main"], indices_count = this->indices.size(), rectangle = this->model_buffer.get(),
                                  instance = this->instance_buffer.get(), &ubo_buffer = this->ubo_buffer, swapchain_size = this->swapchain->size()](
                                     vk::CommandBuffer command_buffer, vk::CommandBufferInheritanceInfo const& inheritance_info,
