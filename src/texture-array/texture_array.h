@@ -12,8 +12,7 @@
 
 #include <ao/vulkan/engine/settings.h>
 #include <ao/vulkan/wrapper/shader_module.h>
-#include <ao/vulkan/buffer/array/basic_buffer.hpp>
-#include <ao/vulkan/buffer/tuple/staging_buffer.hpp>
+#include <ao/vulkan/memory/vector.hpp>
 #include <glm/gtx/rotate_vector.hpp>
 #include <glm/gtx/string_cast.hpp>
 #include <vulkan/vulkan.hpp>
@@ -33,15 +32,13 @@ class TextureArrayDemo : public ao::vulkan::GLFWEngine {
     std::vector<TexturedVertex> vertices;
     std::vector<u16> indices;
 
-    std::unique_ptr<ao::vulkan::BasicDynamicArrayBuffer<UBO::InstanceData>> instance_buffer;
-    std::unique_ptr<ao::vulkan::StagingTupleBuffer<TexturedVertex, u16>> model_buffer;
-    std::unique_ptr<ao::vulkan::BasicDynamicArrayBuffer<UBO>> ubo_buffer;
+    std::unique_ptr<ao::vulkan::Vector<UBO::InstanceData>> instance_buffer;
     std::tuple<vk::Image, vk::DeviceMemory, vk::ImageView> texture;
+    std::unique_ptr<ao::vulkan::Vector<char>> model_buffer;
+    std::unique_ptr<ao::vulkan::Vector<UBO>> ubo_buffer;
     vk::Sampler texture_sampler;
 
     std::vector<ao::vulkan::GraphicsPrimaryCommandBuffer::SecondaryCommandBuffer*> secondary_command_buffers;
-
-    std::vector<UBO> uniform_buffers;
 
     u32 array_level_index = 0;
     u32 array_levels;

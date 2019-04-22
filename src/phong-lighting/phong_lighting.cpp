@@ -7,6 +7,7 @@
 #include <execution>
 
 #include <ao/vulkan/pipeline/graphics_pipeline.h>
+#include <ao/vulkan/utilities/device.h>
 #include <meshoptimizer.h>
 #include <objparser.h>
 #include <boost/math/constants/constants.hpp>
@@ -318,8 +319,8 @@ void PhongLightingDemo::createVulkanBuffers() {
     // Optimize mesh
     this->LOGGER << ao::core::Logger::Level::trace << "Optimize mesh";
     std::vector<u32> remap_indices(this->indices_count);
-    size_t vertices_count = meshopt_generateVertexRemap(remap_indices.data(), nullptr, this->indices_count, opt_vertices.data(), this->indices_count,
-                                                        sizeof(MeshOptVertex));
+    this->vertices_count = meshopt_generateVertexRemap(remap_indices.data(), nullptr, this->indices_count, opt_vertices.data(), this->indices_count,
+                                                       sizeof(MeshOptVertex));
 
     this->indices.resize(this->indices_count);
     std::vector<MeshOptVertex> remap_vertices(vertices_count);
@@ -345,27 +346,25 @@ void PhongLightingDemo::createVulkanBuffers() {
     this->LOGGER << ao::core::Logger::Level::trace << "=== Model loading end ===";
 
     // Create vertices & indices
-    this->model_buffer =
-        std::make_unique<ao::vulkan::StagingTupleBuffer<NormalVertex, u32>>(this->device, vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
-    this->model_buffer->init({sizeof(NormalVertex) * this->vertices.size(), sizeof(u32) * this->indices.size()})
-        ->update(this->vertices.data(), this->indices.data());
+    this->model_buffer = std::make_unique<ao::vulkan::Vector<char>>(sizeof(NormalVertex) * this->vertices.size() + sizeof(u32) * this->indices.size(),
+                                                                    this->device_allocator,
+                                                                    vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eIndexBuffer);
+    std::copy(this->vertices.data(), this->vertices.data() + this->vertices.size(), reinterpret_cast<NormalVertex*>(&this->model_buffer->at(0)));
+    std::copy(this->indices.data(), this->indices.data() + this->indices.size(),
+              reinterpret_cast<u32*>(&this->model_buffer->at(sizeof(NormalVertex) * this->vertices.size())));
+    this->model_buffer->invalidate(0, this->model_buffer->size());
+
+    this->device_allocator->freeHost(this->model_buffer->info());
 
     // Clear vectors
     this->vertices.resize(0);
     this->indices.resize(0);
 
-    this->model_buffer->freeHostBuffer();
+    this->model_ubo_buffer = std::make_unique<ao::vulkan::Vector<UniformBufferObject>>(this->swapchain->size(), this->host_uniform_allocator,
+                                                                                       vk::BufferUsageFlagBits::eUniformBuffer);
 
-    this->model_ubo_buffer = std::make_unique<ao::vulkan::BasicDynamicArrayBuffer<UniformBufferObject>>(this->swapchain->size(), this->device);
-    this->model_ubo_buffer->init(vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, vk::MemoryPropertyFlagBits::eHostVisible,
-                                 ao::vulkan::Buffer::CalculateUBOAligmentSize(this->device->physical(), sizeof(UniformBufferObject)));
-    this->light_ubo_buffer = std::make_unique<ao::vulkan::BasicDynamicArrayBuffer<UniformBufferLightObject>>(this->swapchain->size(), this->device);
-    this->light_ubo_buffer->init(vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, vk::MemoryPropertyFlagBits::eHostVisible,
-                                 ao::vulkan::Buffer::CalculateUBOAligmentSize(this->device->physical(), sizeof(UniformBufferLightObject)));
-
-    // Resize uniform buffers vectors
-    this->model_uniform_buffers.resize(this->swapchain->size());
-    this->light_uniform_buffers.resize(this->swapchain->size());
+    this->light_ubo_buffer = std::make_unique<ao::vulkan::Vector<UniformBufferLightObject>>(this->swapchain->size(), this->host_uniform_allocator,
+                                                                                            vk::BufferUsageFlagBits::eUniformBuffer);
 
     /* DESCRIPTOR SETS CREATION */
 
@@ -378,8 +377,9 @@ void PhongLightingDemo::createVulkanBuffers() {
 
     // Configure
     for (size_t i = 0; i < this->swapchain->size(); i++) {
-        vk::DescriptorBufferInfo model_buffer_info(this->model_ubo_buffer->buffer(), this->model_ubo_buffer->offset(i), sizeof(UniformBufferObject));
-        vk::DescriptorBufferInfo light_buffer_info(this->light_ubo_buffer->buffer(), this->light_ubo_buffer->offset(i),
+        vk::DescriptorBufferInfo model_buffer_info(this->model_ubo_buffer->info().buffer, this->model_ubo_buffer->offset(i),
+                                                   sizeof(UniformBufferObject));
+        vk::DescriptorBufferInfo light_buffer_info(this->light_ubo_buffer->info().buffer, this->light_ubo_buffer->offset(i),
                                                    sizeof(UniformBufferLightObject));
 
         this->device->logical()->updateDescriptorSets(
@@ -396,10 +396,10 @@ void PhongLightingDemo::createSecondaryCommandBuffers() {
     this->secondary_command_buffers.resize(command_buffers.size());
     for (size_t i = 0; i < command_buffers.size(); i++) {
         this->secondary_command_buffers[i] = new ao::vulkan::GraphicsPrimaryCommandBuffer::SecondaryCommandBuffer(
-            command_buffers[i],
-            [main_pipeline = this->pipelines["main"], light_pipeline = this->pipelines["light-cube"], indices_count = this->indices_count,
-             model = this->model_buffer.get()](vk::CommandBuffer command_buffer, vk::CommandBufferInheritanceInfo const& inheritance_info,
-                                               vk::Extent2D swapchain_extent, int frame_index) {
+            command_buffers[i], [main_pipeline = this->pipelines["main"], light_pipeline = this->pipelines["light-cube"],
+                                 indices_count = this->indices_count, vertices_count = this->vertices_count, model = this->model_buffer.get()](
+                                    vk::CommandBuffer command_buffer, vk::CommandBufferInheritanceInfo const& inheritance_info,
+                                    vk::Extent2D swapchain_extent, int frame_index) {
                 // Begin info
                 vk::CommandBufferBeginInfo begin_info =
                     vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eRenderPassContinue).setPInheritanceInfo(&inheritance_info);
@@ -417,8 +417,9 @@ void PhongLightingDemo::createSecondaryCommandBuffers() {
                     command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, main_pipeline->value());
 
                     // Draw model
-                    command_buffer.bindVertexBuffers(0, model->buffer(), {0});
-                    command_buffer.bindIndexBuffer(model->buffer(), model->offset(1), vk::IndexType::eUint32);
+                    command_buffer.bindVertexBuffers(0, model->info().buffer, {0});
+                    command_buffer.bindIndexBuffer(model->info().buffer, model->offset(sizeof(NormalVertex) * vertices_count),
+                                                   vk::IndexType::eUint32);
                     command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, main_pipeline->layout()->value(), 0,
                                                       main_pipeline->pools().front().descriptorSets().at(frame_index), {});
 
@@ -430,8 +431,9 @@ void PhongLightingDemo::createSecondaryCommandBuffers() {
                     command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, light_pipeline->value());
 
                     // Draw model
-                    command_buffer.bindVertexBuffers(0, model->buffer(), {0});
-                    command_buffer.bindIndexBuffer(model->buffer(), model->offset(1), vk::IndexType::eUint32);
+                    command_buffer.bindVertexBuffers(0, model->info().buffer, {0});
+                    command_buffer.bindIndexBuffer(model->info().buffer, model->offset(sizeof(NormalVertex) * vertices_count),
+                                                   vk::IndexType::eUint32);
                     command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, light_pipeline->layout()->value(), 0,
                                                       main_pipeline->pools().front().descriptorSets().at(frame_index), {});
 
@@ -461,11 +463,14 @@ void PhongLightingDemo::beforeCommandBuffersUpdate() {
 
         // Init uniform buffers
         for (size_t i = 0; i < this->swapchain->size(); i++) {
-            this->model_uniform_buffers[i].rotation = glm::rotate(glm::mat4(1.0f), 125.0f * glm::radians(45.0f), glm::vec3(.0f, .0f, 1.0f));
+            auto& ubo = this->model_ubo_buffer->at(i);
 
-            this->model_uniform_buffers[i].proj =
-                glm::perspective(glm::radians(45.0f), this->swapchain->extent().width / (float)this->swapchain->extent().height, 0.1f, 10.0f);
-            this->model_uniform_buffers[i].proj[1][1] *= -1;  // Adapt for vulkan
+            ubo.rotation = glm::rotate(glm::mat4(1.0f), 125.0f * glm::radians(45.0f), glm::vec3(.0f, .0f, 1.0f));
+
+            ubo.proj = glm::perspective(glm::radians(45.0f), this->swapchain->extent().width / static_cast<float>(this->swapchain->extent().height),
+                                        0.1f, 10.0f);
+            ubo.proj[1][1] *= -1;  // Adapt for vulkan
+            ubo.scale = 1.0f;
         }
         return;
     }
@@ -514,27 +519,28 @@ void PhongLightingDemo::beforeCommandBuffersUpdate() {
     auto camera_position = std::get<0>(this->camera) - (std::get<0>(this->camera) * std::get<3>(this->camera));
 
     // Update light
-    this->light_uniform_buffers[this->swapchain->frameIndex()].position =
-        glm::rotate(glm::mat4(1.0f), RotationTarget * elapsed_time, glm::vec3(.0f, .0f, 1.0f)) * glm::vec4(2.0f, .0f, .0f, 0.0f);
-    this->light_uniform_buffers[this->swapchain->frameIndex()].view_position = glm::vec4(camera_position, 1.0f);
-    this->light_uniform_buffers[this->swapchain->frameIndex()].color = {
-        (0.5f * glm::cos(elapsed_time)) + 0.5f, (0.5f * glm::cos(elapsed_time * .7f)) + 0.5f, (0.5f * glm::cos(elapsed_time * 1.3f)) + 0.5f, .25f};
+    auto& light_ubo = this->light_ubo_buffer->at(this->swapchain->frameIndex());
+    light_ubo.position = glm::rotate(glm::mat4(1.0f), RotationTarget * elapsed_time, glm::vec3(.0f, .0f, 1.0f)) * glm::vec4(2.0f, .0f, .0f, 0.0f);
+    light_ubo.view_position = glm::vec4(camera_position, 1.0f);
+    light_ubo.color = {(0.5f * glm::cos(elapsed_time)) + 0.5f, (0.5f * glm::cos(elapsed_time * .7f)) + 0.5f,
+                       (0.5f * glm::cos(elapsed_time * 1.3f)) + 0.5f, .25f};
 
     // Update camera
-    this->model_uniform_buffers[this->swapchain->frameIndex()].view =
+    this->model_ubo_buffer->at(this->swapchain->frameIndex()).view =
         glm::lookAt(camera_position, glm::vec3(.0f, .0f, .0f), glm::vec3(.0f, .0f, 1.0f));
 
     if (this->swapchain->state() == ao::vulkan::SwapchainState::eReset) {
         for (size_t i = 0; i < this->swapchain->size(); i++) {
-            this->model_uniform_buffers[i].proj =
-                glm::perspective(glm::radians(45.0f), this->swapchain->extent().width / (float)this->swapchain->extent().height, 0.1f, 10.0f);
-            this->model_uniform_buffers[i].proj[1][1] *= -1;  // Adapt for vulkan
-        }
-    }
+            auto& ubo = this->model_ubo_buffer->at(i);
 
-    // Update buffers
-    this->model_ubo_buffer->updateFragment(this->swapchain->frameIndex(), &this->model_uniform_buffers[this->swapchain->frameIndex()]);
-    this->light_ubo_buffer->updateFragment(this->swapchain->frameIndex(), &this->light_uniform_buffers[this->swapchain->frameIndex()]);
+            ubo.proj = glm::perspective(glm::radians(45.0f), this->swapchain->extent().width / static_cast<float>(this->swapchain->extent().height),
+                                        0.1f, 10.0f);
+            ubo.proj[1][1] *= -1;  // Adapt for vulkan
+        }
+        this->model_ubo_buffer->invalidate(0, this->model_ubo_buffer->size());
+    } else {
+        this->model_ubo_buffer->invalidate(this->swapchain->frameIndex());
+    }
 
     // Update clock
     this->clock = std::chrono::system_clock::now();

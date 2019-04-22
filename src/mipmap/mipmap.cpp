@@ -7,6 +7,7 @@
 #include <execution>
 
 #include <ao/vulkan/pipeline/graphics_pipeline.h>
+#include <ao/vulkan/utilities/device.h>
 #include <meshoptimizer.h>
 #include <objparser.h>
 #include <boost/filesystem.hpp>
@@ -17,22 +18,6 @@
 static constexpr char const* MipMapKey = "mimap.enable";
 
 void MipmapDemo::setUpTexture() {
-    /* RESET PART */
-
-    if (this->texture_sampler) {
-        this->device->logical()->destroySampler(this->texture_sampler);
-    }
-
-    if (std::get<0>(this->texture)) {
-        this->device->logical()->destroyImage(std::get<0>(this->texture));
-    }
-    if (std::get<2>(this->texture)) {
-        this->device->logical()->destroyImageView(std::get<2>(this->texture));
-    }
-    if (std::get<1>(this->texture)) {
-        this->device->logical()->freeMemory(std::get<1>(this->texture));
-    }
-
     /* TEXTURE CREATION */
 
     // Load texture
@@ -46,63 +31,122 @@ void MipmapDemo::setUpTexture() {
     if (texture_image.empty()) {
         throw ao::core::Exception(fmt::format("Fail to load image: {0}", texture_file));
     }
-    auto mip_levels = this->settings_->get<bool>(MipMapKey, true) ? static_cast<u32>(texture_image.levels()) : 1;
     auto image_format = vk::Format(texture_image.format());  // Convert format
 
     this->LOGGER << ao::core::Logger::Level::debug << fmt::format("Load texture with format: {}", vk::to_string(image_format));
 
-    // Create buffer
-    auto texture_buffer = ao::vulkan::BasicTupleBuffer<pixel_t>(this->device);
-    texture_buffer
-        .init(vk::BufferUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive,
-              vk::MemoryPropertyFlagBits::eHostCoherent | vk::MemoryPropertyFlagBits::eHostVisible,
-              {mip_levels == 1 ? texture_image[0].size() : texture_image.size()})
-        ->update(static_cast<u8*>(texture_image.data()));
+    // Mipmap texture
+    {
+        auto mip_levels = static_cast<u32>(texture_image.levels());
 
-    // Create image
-    auto image = ao::vulkan::utilities::createImage(
-        *this->device->logical(), this->device->physical(), texture_image.extent().x, texture_image.extent().y, mip_levels, 1, image_format,
-        vk::ImageType::e2D, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
-        vk::MemoryPropertyFlagBits::eDeviceLocal);
+        // Create buffer
+        auto texture_buffer = ao::vulkan::Vector<u8>(texture_image.size() / sizeof(u8), this->host_allocator, vk::BufferUsageFlagBits::eTransferSrc);
+        std::copy(std::execution::par_unseq, static_cast<u8*>(texture_image.data()), static_cast<u8*>(texture_image.data()) + texture_buffer.size(),
+                  &texture_buffer.at(0));
+        texture_buffer.invalidate(0, texture_buffer.size());
 
-    // Assign
-    std::get<0>(this->texture) = image.first;
-    std::get<1>(this->texture) = image.second;
+        // Create image
+        auto image = ao::vulkan::utilities::createImage(
+            *this->device->logical(), this->device->physical(), texture_image.extent().x, texture_image.extent().y, mip_levels, 1, image_format,
+            vk::ImageType::e2D, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
+            vk::MemoryPropertyFlagBits::eDeviceLocal);
 
-    // Create regions
-    std::vector<vk::BufferImageCopy> regions(mip_levels);
-    u32 region_offset = 0;
-    for (u32 i = 0; i < mip_levels; i++) {
-        regions[i]
-            .setBufferOffset(region_offset)
-            .setImageExtent(vk::Extent3D(texture_image[i].extent().x, texture_image[i].extent().y, 1))
-            .setImageSubresource(vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, static_cast<u32>(i), 0, 1));
+        // Assign
+        std::get<0>(this->mipmap_texture) = image.first;
+        std::get<1>(this->mipmap_texture) = image.second;
 
-        region_offset += static_cast<u32>(texture_image[i].size());
+        // Create regions
+        std::vector<vk::BufferImageCopy> regions(mip_levels);
+        u32 region_offset = 0;
+        for (u32 i = 0; i < mip_levels; i++) {
+            regions[i]
+                .setBufferOffset(region_offset)
+                .setImageExtent(vk::Extent3D(texture_image[i].extent().x, texture_image[i].extent().y, 1))
+                .setImageSubresource(vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, static_cast<u32>(i), 0, 1));
+
+            region_offset += static_cast<u32>(texture_image[i].size());
+        }
+
+        // Process image & copy into image
+        ao::vulkan::utilities::updateImageLayout(*this->device->logical(), this->device->graphicsPool(), *this->device->queues(),
+                                                 std::get<0>(this->mipmap_texture), image_format,
+                                                 vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, mip_levels, 0, 1),
+                                                 vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
+        ao::vulkan::utilities::copyBufferToImage(*this->device->logical(), this->device->transferPool(), *this->device->queues(),
+                                                 texture_buffer.info().buffer, std::get<0>(this->mipmap_texture), regions);
+        ao::vulkan::utilities::updateImageLayout(*this->device->logical(), this->device->graphicsPool(), *this->device->queues(),
+                                                 std::get<0>(this->mipmap_texture), image_format,
+                                                 vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, mip_levels, 0, 1),
+                                                 vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
+
+        // Create view
+        std::get<2>(this->mipmap_texture) =
+            ao::vulkan::utilities::createImageView(*this->device->logical(), std::get<0>(this->mipmap_texture), image_format, vk::ImageViewType::e2D,
+                                                   vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, mip_levels, 0, 1));
+
+        // Create sampler
+        this->mipmap_texture_sampler = this->device->logical()->createSampler(
+            vk::SamplerCreateInfo(vk::SamplerCreateFlags(), vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eLinear,
+                                  vk::SamplerAddressMode::eRepeat, vk::SamplerAddressMode::eRepeat, vk::SamplerAddressMode::eRepeat, 0, VK_TRUE, 16,
+                                  VK_FALSE, vk::CompareOp::eAlways, 0, static_cast<float>(mip_levels), vk::BorderColor::eFloatOpaqueBlack, VK_FALSE));
     }
 
-    // Process image & copy into image
-    ao::vulkan::utilities::updateImageLayout(*this->device->logical(), this->device->graphicsPool(), *this->device->queues(),
-                                             std::get<0>(this->texture), image_format,
-                                             vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, mip_levels, 0, 1),
-                                             vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
-    ao::vulkan::utilities::copyBufferToImage(*this->device->logical(), this->device->transferPool(), *this->device->queues(), texture_buffer.buffer(),
-                                             std::get<0>(this->texture), regions);
-    ao::vulkan::utilities::updateImageLayout(*this->device->logical(), this->device->graphicsPool(), *this->device->queues(),
-                                             std::get<0>(this->texture), image_format,
-                                             vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, mip_levels, 0, 1),
-                                             vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
+    // Basic texture
+    {
+        static constexpr auto mip_levels = 1;
 
-    // Create view
-    std::get<2>(this->texture) =
-        ao::vulkan::utilities::createImageView(*this->device->logical(), std::get<0>(this->texture), image_format, vk::ImageViewType::e2D,
-                                               vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, mip_levels, 0, 1));
+        // Create buffer
+        auto texture_buffer =
+            ao::vulkan::Vector<u8>(texture_image[0].size() / sizeof(u8), this->host_allocator, vk::BufferUsageFlagBits::eTransferSrc);
+        std::copy(std::execution::par_unseq, static_cast<u8*>(texture_image.data()), static_cast<u8*>(texture_image.data()) + texture_buffer.size(),
+                  &texture_buffer.at(0));
+        texture_buffer.invalidate(0, texture_buffer.size());
 
-    // Create sampler
-    this->texture_sampler = this->device->logical()->createSampler(
-        vk::SamplerCreateInfo(vk::SamplerCreateFlags(), vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eLinear,
-                              vk::SamplerAddressMode::eRepeat, vk::SamplerAddressMode::eRepeat, vk::SamplerAddressMode::eRepeat, 0, VK_TRUE, 16,
-                              VK_FALSE, vk::CompareOp::eAlways, 0, static_cast<float>(mip_levels), vk::BorderColor::eFloatOpaqueBlack, VK_FALSE));
+        // Create image
+        auto image = ao::vulkan::utilities::createImage(
+            *this->device->logical(), this->device->physical(), texture_image.extent().x, texture_image.extent().y, mip_levels, 1, image_format,
+            vk::ImageType::e2D, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
+            vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+        // Assign
+        std::get<0>(this->texture) = image.first;
+        std::get<1>(this->texture) = image.second;
+
+        // Create regions
+        std::vector<vk::BufferImageCopy> regions(mip_levels);
+        u32 region_offset = 0;
+        for (u32 i = 0; i < mip_levels; i++) {
+            regions[i]
+                .setBufferOffset(region_offset)
+                .setImageExtent(vk::Extent3D(texture_image[i].extent().x, texture_image[i].extent().y, 1))
+                .setImageSubresource(vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, static_cast<u32>(i), 0, 1));
+
+            region_offset += static_cast<u32>(texture_image[i].size());
+        }
+
+        // Process image & copy into image
+        ao::vulkan::utilities::updateImageLayout(*this->device->logical(), this->device->graphicsPool(), *this->device->queues(),
+                                                 std::get<0>(this->texture), image_format,
+                                                 vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, mip_levels, 0, 1),
+                                                 vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
+        ao::vulkan::utilities::copyBufferToImage(*this->device->logical(), this->device->transferPool(), *this->device->queues(),
+                                                 texture_buffer.info().buffer, std::get<0>(this->texture), regions);
+        ao::vulkan::utilities::updateImageLayout(*this->device->logical(), this->device->graphicsPool(), *this->device->queues(),
+                                                 std::get<0>(this->texture), image_format,
+                                                 vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, mip_levels, 0, 1),
+                                                 vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
+
+        // Create view
+        std::get<2>(this->texture) =
+            ao::vulkan::utilities::createImageView(*this->device->logical(), std::get<0>(this->texture), image_format, vk::ImageViewType::e2D,
+                                                   vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, mip_levels, 0, 1));
+
+        // Create sampler
+        this->texture_sampler = this->device->logical()->createSampler(
+            vk::SamplerCreateInfo(vk::SamplerCreateFlags(), vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eLinear,
+                                  vk::SamplerAddressMode::eRepeat, vk::SamplerAddressMode::eRepeat, vk::SamplerAddressMode::eRepeat, 0, VK_TRUE, 16,
+                                  VK_FALSE, vk::CompareOp::eAlways, 0, static_cast<float>(mip_levels), vk::BorderColor::eFloatOpaqueBlack, VK_FALSE));
+    }
 
     /* DESCRIPTOR SETS CREATION */
 
@@ -110,23 +154,24 @@ void MipmapDemo::setUpTexture() {
     std::vector<vk::DescriptorSetLayout> layouts(this->swapchain->size(), this->pipelines["main"]->layout()->descriptorLayouts().front());
 
     // Create sets
-    std::vector<vk::DescriptorSet> descriptor_sets;
-    if (this->pipelines["main"]->pools().front().descriptorSets().empty()) {
-        descriptor_sets = this->pipelines["main"]->pools().front().allocateDescriptorSets(static_cast<u32>(this->swapchain->size()), layouts);
-    } else {
-        descriptor_sets = this->pipelines["main"]->pools().front().descriptorSets();
-    }
+    std::vector<vk::DescriptorSet> descriptor_sets =
+        this->pipelines["main"]->pools().front().allocateDescriptorSets(static_cast<u32>(this->swapchain->size()), layouts);
 
     // Configure
     for (size_t i = 0; i < this->swapchain->size(); i++) {
+        vk::DescriptorImageInfo mipmap_sample_info(this->mipmap_texture_sampler, std::get<2>(this->mipmap_texture),
+                                                   vk::ImageLayout::eShaderReadOnlyOptimal);
         vk::DescriptorImageInfo sample_info(this->texture_sampler, std::get<2>(this->texture), vk::ImageLayout::eShaderReadOnlyOptimal);
-        vk::DescriptorBufferInfo buffer_info(this->ubo_buffer->buffer(), this->ubo_buffer->offset(i), sizeof(UniformBufferObject));
+        vk::DescriptorBufferInfo buffer_info(this->ubo_buffer->info().buffer, this->ubo_buffer->offset(i), sizeof(UniformBufferObject));
 
         this->device->logical()->updateDescriptorSets(
             vk::WriteDescriptorSet(descriptor_sets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &buffer_info), {});
 
         this->device->logical()->updateDescriptorSets(
             vk::WriteDescriptorSet(descriptor_sets[i], 1, 0, 1, vk::DescriptorType::eCombinedImageSampler, &sample_info), {});
+
+        this->device->logical()->updateDescriptorSets(
+            vk::WriteDescriptorSet(descriptor_sets[i], 2, 0, 1, vk::DescriptorType::eCombinedImageSampler, &mipmap_sample_info), {});
     }
 }
 
@@ -137,8 +182,10 @@ void MipmapDemo::onKeyEventCallback(GLFWwindow* window, int key, int scancode, i
     if (key == GLFW_KEY_T && action == GLFW_PRESS) {
         this->settings_->get<bool>(MipMapKey) = !this->settings_->get<bool>(MipMapKey);
 
-        // Update texture
-        this->setUpTexture();
+        // Invalidate command buffers
+        for (size_t i = 0; i < this->primary_command_buffers.size(); i++) {
+            this->primary_command_buffers[i]->invalidateSecondary();
+        }
 
         this->LOGGER << ao::core::Logger::Level::debug << fmt::format("Mimap: {}", this->settings_->get<bool>(MipMapKey) ? "On" : "Off");
     }
@@ -159,6 +206,12 @@ void MipmapDemo::freeVulkan() {
     this->device->logical()->destroyImage(std::get<0>(this->texture));
     this->device->logical()->destroyImageView(std::get<2>(this->texture));
     this->device->logical()->freeMemory(std::get<1>(this->texture));
+
+    this->device->logical()->destroySampler(this->mipmap_texture_sampler);
+
+    this->device->logical()->destroyImage(std::get<0>(this->mipmap_texture));
+    this->device->logical()->destroyImageView(std::get<2>(this->mipmap_texture));
+    this->device->logical()->freeMemory(std::get<1>(this->mipmap_texture));
 
     ao::vulkan::GLFWEngine::freeVulkan();
 }
@@ -210,16 +263,20 @@ void MipmapDemo::createPipelines() {
     /* PIPELINE LAYOUT PART */
 
     // Create bindings
-    std::array<vk::DescriptorSetLayoutBinding, 2> bindings;
+    std::array<vk::DescriptorSetLayoutBinding, 3> bindings;
     bindings[0] = vk::DescriptorSetLayoutBinding(0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex);
     bindings[1] = vk::DescriptorSetLayoutBinding(1, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment);
+    bindings[2] = vk::DescriptorSetLayoutBinding(2, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment);
 
     // Create layout
     std::vector<vk::DescriptorSetLayout> descriptor_set_layouts;
     descriptor_set_layouts.push_back(this->device->logical()->createDescriptorSetLayout(
         vk::DescriptorSetLayoutCreateInfo(vk::DescriptorSetLayoutCreateFlags(), static_cast<u32>(bindings.size()), bindings.data())));
 
-    auto pipeline_layout = std::make_shared<ao::vulkan::PipelineLayout>(this->device->logical(), descriptor_set_layouts);
+    std::vector<vk::PushConstantRange> push_constants;
+    push_constants.push_back(vk::PushConstantRange(vk::ShaderStageFlagBits::eFragment, 0, sizeof(u32)));
+
+    auto pipeline_layout = std::make_shared<ao::vulkan::PipelineLayout>(this->device->logical(), descriptor_set_layouts, push_constants);
 
     /* PIPELINE PART */
 
@@ -229,7 +286,7 @@ void MipmapDemo::createPipelines() {
     // Load shaders & get shaderStages
     std::vector<vk::PipelineShaderStageCreateInfo> shader_stages =
         module.loadShader(vk::ShaderStageFlagBits::eVertex, "assets/shaders/model/vert.spv")
-            .loadShader(vk::ShaderStageFlagBits::eFragment, "assets/shaders/model/frag.spv")
+            .loadShader(vk::ShaderStageFlagBits::eFragment, "assets/shaders/mimap/frag.spv")
             .shaderStages();
 
     // Construct the different states making up the pipeline
@@ -304,7 +361,7 @@ void MipmapDemo::createPipelines() {
 
     std::array<vk::DescriptorPoolSize, 2> pool_sizes;
     pool_sizes[0] = vk::DescriptorPoolSize(vk::DescriptorType::eUniformBuffer, static_cast<u32>(this->swapchain->size()));
-    pool_sizes[1] = vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler, static_cast<u32>(this->swapchain->size()));
+    pool_sizes[1] = vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler, static_cast<u32>(this->swapchain->size() * 2));
 
     this->pipelines["main"]->pools().push_back(std::move(ao::vulkan::DescriptorPool(
         this->device->logical(), vk::DescriptorPoolCreateInfo(vk::DescriptorPoolCreateFlags(), static_cast<u32>(this->swapchain->size()),
@@ -351,8 +408,8 @@ void MipmapDemo::createVulkanBuffers() {
     // Optimize mesh
     this->LOGGER << ao::core::Logger::Level::trace << "Optimize mesh";
     std::vector<u32> remap_indices(this->indices_count);
-    size_t vertices_count = meshopt_generateVertexRemap(remap_indices.data(), nullptr, this->indices_count, opt_vertices.data(), this->indices_count,
-                                                        sizeof(MeshOptVertex));
+    this->vertices_count = meshopt_generateVertexRemap(remap_indices.data(), nullptr, this->indices_count, opt_vertices.data(), this->indices_count,
+                                                       sizeof(MeshOptVertex));
 
     this->indices.resize(this->indices_count);
     std::vector<MeshOptVertex> remap_vertices(vertices_count);
@@ -376,24 +433,24 @@ void MipmapDemo::createVulkanBuffers() {
     this->LOGGER << ao::core::Logger::Level::trace << "=== Model loading end ===";
 
     // Create vertices & indices
-    this->model_buffer =
-        std::make_unique<ao::vulkan::StagingTupleBuffer<TexturedVertex, u32>>(this->device, vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
-    this->model_buffer->init({sizeof(TexturedVertex) * this->vertices.size(), sizeof(u32) * this->indices.size()})
-        ->update(this->vertices.data(), this->indices.data());
+    this->model_buffer = std::make_unique<ao::vulkan::Vector<char>>(
+        sizeof(TexturedVertex) * this->vertices.size() + sizeof(u32) * this->indices.size(), this->device_allocator,
+        vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eIndexBuffer);
 
-    this->model_buffer->freeHostBuffer();
+    std::copy(std::execution::par_unseq, this->vertices.data(), this->vertices.data() + this->vertices.size(),
+              reinterpret_cast<TexturedVertex*>(&this->model_buffer->at(0)));
+    std::copy(std::execution::par_unseq, this->indices.data(), this->indices.data() + this->indices.size(),
+              reinterpret_cast<u32*>(&this->model_buffer->at(sizeof(TexturedVertex) * this->vertices.size())));
+    this->model_buffer->invalidate(0, this->model_buffer->size());
+
+    this->device_allocator->freeHost(this->model_buffer->info());
 
     // Free vectors
     this->vertices.resize(0);
     this->indices.resize(0);
 
-    this->ubo_buffer = std::make_unique<ao::vulkan::BasicDynamicArrayBuffer<UniformBufferObject>>(this->swapchain->size(), this->device);
-    this->ubo_buffer->init(vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, vk::MemoryPropertyFlagBits::eHostVisible,
-                           ao::vulkan::Buffer::CalculateUBOAligmentSize(this->device->physical(), sizeof(UniformBufferObject)));
-
-    // Resize uniform buffers vector
-    this->uniform_buffers.resize(this->swapchain->size());
-
+    this->ubo_buffer = std::make_unique<ao::vulkan::Vector<UniformBufferObject>>(this->swapchain->size(), this->host_uniform_allocator,
+                                                                                 vk::BufferUsageFlagBits::eUniformBuffer);
     // Load texture...
     this->setUpTexture();
 }
@@ -405,10 +462,10 @@ void MipmapDemo::createSecondaryCommandBuffers() {
     this->secondary_command_buffers.resize(command_buffers.size());
     for (size_t i = 0; i < command_buffers.size(); i++) {
         this->secondary_command_buffers[i] = new ao::vulkan::GraphicsPrimaryCommandBuffer::SecondaryCommandBuffer(
-            command_buffers[i],
-            [pipeline = this->pipelines["main"], indices_count = this->indices_count, model = this->model_buffer.get(),
-             &ubo_buffer = this->ubo_buffer](vk::CommandBuffer command_buffer, vk::CommandBufferInheritanceInfo const& inheritance_info,
-                                             vk::Extent2D swapchain_extent, int frame_index) {
+            command_buffers[i], [pipeline = this->pipelines["main"], indices_count = this->indices_count, vertices_count = this->vertices_count,
+                                 model = this->model_buffer.get(), &ubo_buffer = this->ubo_buffer, &settings = this->settings_](
+                                    vk::CommandBuffer command_buffer, vk::CommandBufferInheritanceInfo const& inheritance_info,
+                                    vk::Extent2D swapchain_extent, int frame_index) {
                 // Begin info
                 vk::CommandBufferBeginInfo begin_info =
                     vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eRenderPassContinue).setPInheritanceInfo(&inheritance_info);
@@ -420,12 +477,17 @@ void MipmapDemo::createSecondaryCommandBuffers() {
                         0, vk::Viewport(0, 0, static_cast<float>(swapchain_extent.width), static_cast<float>(swapchain_extent.height), 0, 1));
                     command_buffer.setScissor(0, vk::Rect2D(vk::Offset2D(), swapchain_extent));
 
+                    // Push constants
+                    command_buffer.pushConstants<u32>(pipeline->layout()->value(), vk::ShaderStageFlagBits::eFragment, 0,
+                                                      static_cast<u32>(settings->get<bool>(MipMapKey, true)));
+
                     // Bind pipeline
                     command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline->value());
 
                     // Draw model
-                    command_buffer.bindVertexBuffers(0, model->buffer(), {0});
-                    command_buffer.bindIndexBuffer(model->buffer(), model->offset(1), vk::IndexType::eUint32);
+                    command_buffer.bindVertexBuffers(0, model->info().buffer, {0});
+                    command_buffer.bindIndexBuffer(model->info().buffer, model->offset(sizeof(TexturedVertex) * vertices_count),
+                                                   vk::IndexType::eUint32);
                     command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline->layout()->value(), 0,
                                                       pipeline->pools().front().descriptorSets().at(frame_index), {});
 
@@ -454,11 +516,13 @@ void MipmapDemo::beforeCommandBuffersUpdate() {
 
         // Init uniform buffers
         for (size_t i = 0; i < this->swapchain->size(); i++) {
-            this->uniform_buffers[i].rotation = glm::rotate(glm::mat4(1.0f), 125.0f * glm::radians(45.0f), glm::vec3(.0f, .0f, 1.0f));
+            auto& ubo = this->ubo_buffer->at(i);
 
-            this->uniform_buffers[i].proj =
-                glm::perspective(glm::radians(45.0f), this->swapchain->extent().width / (float)this->swapchain->extent().height, 0.1f, 10.0f);
-            this->uniform_buffers[i].proj[1][1] *= -1;  // Adapt for vulkan
+            ubo.rotation = glm::rotate(glm::mat4(1.0f), 125.0f * glm::radians(45.0f), glm::vec3(.0f, .0f, 1.0f));
+            ubo.proj = glm::perspective(glm::radians(45.0f), this->swapchain->extent().width / static_cast<float>(this->swapchain->extent().height),
+                                        0.1f, 10000000.0f);
+            ubo.proj[1][1] *= -1;  // Adapt for vulkan
+            ubo.scale = 1.0f;
         }
         return;
     }
@@ -504,19 +568,21 @@ void MipmapDemo::beforeCommandBuffersUpdate() {
     std::get<0>(this->camera) = glm::vec3(glm::rotate(glm::mat4(1.0f), rotation, angles) * glm::vec4(std::get<0>(this->camera), 0.0f));
 
     // Update uniform buffer
-    this->uniform_buffers[this->swapchain->frameIndex()].view = glm::lookAt(
+    this->ubo_buffer->at(this->swapchain->frameIndex()).view = glm::lookAt(
         std::get<0>(this->camera) - (std::get<0>(this->camera) * std::get<3>(this->camera)), glm::vec3(.0f, .0f, .0f), glm::vec3(.0f, .0f, 1.0f));
 
     if (this->swapchain->state() == ao::vulkan::SwapchainState::eReset) {
         for (size_t i = 0; i < this->swapchain->size(); i++) {
-            this->uniform_buffers[i].proj =
-                glm::perspective(glm::radians(45.0f), this->swapchain->extent().width / (float)this->swapchain->extent().height, 0.1f, 10.0f);
-            this->uniform_buffers[i].proj[1][1] *= -1;  // Adapt for vulkan
-        }
-    }
+            auto& ubo = this->ubo_buffer->at(i);
 
-    // Update buffer
-    this->ubo_buffer->updateFragment(this->swapchain->frameIndex(), &this->uniform_buffers[this->swapchain->frameIndex()]);
+            ubo.proj = glm::perspective(glm::radians(45.0f), this->swapchain->extent().width / static_cast<float>(this->swapchain->extent().height),
+                                        0.1f, 10000000.0f);
+            ubo.proj[1][1] *= -1;  // Adapt for vulkan
+        }
+        this->ubo_buffer->invalidate(0, this->ubo_buffer->size());
+    } else {
+        this->ubo_buffer->invalidate(this->swapchain->frameIndex());
+    }
 
     // Update clock
     this->clock = std::chrono::system_clock::now();

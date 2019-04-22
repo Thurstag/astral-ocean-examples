@@ -24,8 +24,8 @@ int main(int argc, char* argv[]) {
     std::shared_ptr<ao::vulkan::EngineSettings> settings = std::make_shared<ao::vulkan::EngineSettings>();
     settings->get<std::string>(ao::vulkan::settings::WindowTitle) =
         fmt::format("Instancing ({} rectangle{})", INSTANCE_COUNT, INSTANCE_COUNT > 1 ? "s" : "");
-    settings->get<u32>(ao::vulkan::settings::WindowWidth) = 1280;
-    settings->get<u32>(ao::vulkan::settings::WindowHeight) = 720;
+    settings->get<u32>(ao::vulkan::settings::SurfaceWidth) = 1280;
+    settings->get<u32>(ao::vulkan::settings::SurfaceHeight) = 720;
     settings->get<bool>(ao::vulkan::settings::ValidationLayers) = true;
     settings->get<bool>(ao::vulkan::settings::StencilBuffer) = true;
 

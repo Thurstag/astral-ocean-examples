@@ -5,6 +5,7 @@
 #include "depth-rectangle.h"
 
 #include <ao/vulkan/pipeline/graphics_pipeline.h>
+#include <ao/vulkan/utilities/device.h>
 
 void DepthRectangleDemo::freeVulkan() {
     // Free buffers
@@ -166,18 +167,19 @@ void DepthRectangleDemo::createPipelines() {
 
 void DepthRectangleDemo::createVulkanBuffers() {
     // Create vertices & indices
-    this->model_buffer = std::make_unique<ao::vulkan::StagingTupleBuffer<Vertex, u16>>(this->device, vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
-    this->model_buffer->init({sizeof(Vertex) * this->vertices.size(), sizeof(u16) * this->indices.size()})
-        ->update(this->vertices.data(), this->indices.data());
+    this->model_buffer = std::make_unique<ao::vulkan::Vector<char>>(sizeof(Vertex) * this->vertices.size() + sizeof(u16) * this->indices.size(),
+                                                                    this->device_allocator,
+                                                                    vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eVertexBuffer);
 
-    this->model_buffer->freeHostBuffer();
+    std::copy(this->vertices.data(), this->vertices.data() + this->vertices.size(), reinterpret_cast<Vertex*>(&this->model_buffer->at(0)));
+    std::copy(this->indices.data(), this->indices.data() + this->indices.size(),
+              reinterpret_cast<u16*>(&this->model_buffer->at(sizeof(Vertex) * this->vertices.size())));
+    this->model_buffer->invalidate(0, this->model_buffer->size());
 
-    this->ubo_buffer = std::make_unique<ao::vulkan::BasicDynamicArrayBuffer<UniformBufferObject>>(this->swapchain->size(), this->device);
-    this->ubo_buffer->init(vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, vk::MemoryPropertyFlagBits::eHostVisible,
-                           ao::vulkan::Buffer::CalculateUBOAligmentSize(this->device->physical(), sizeof(UniformBufferObject)));
+    this->device_allocator->freeHost(this->model_buffer->info());
 
-    // Resize uniform buffers vector
-    this->uniform_buffers.resize(this->swapchain->size());
+    this->ubo_buffer = std::make_unique<ao::vulkan::Vector<UniformBufferObject>>(this->swapchain->size(), this->host_uniform_allocator,
+                                                                                 vk::BufferUsageFlagBits::eUniformBuffer);
 
     /* DESCRIPTOR SETS CREATION */
 
@@ -189,8 +191,7 @@ void DepthRectangleDemo::createVulkanBuffers() {
 
     // Configure
     for (size_t i = 0; i < this->swapchain->size(); i++) {
-        vk::DescriptorBufferInfo buffer_info(this->ubo_buffer->buffer(), this->ubo_buffer->offset(i),
-                                             this->ubo_buffer->size() / this->ubo_buffer->capacity());
+        vk::DescriptorBufferInfo buffer_info(this->ubo_buffer->info().buffer, this->ubo_buffer->offset(i), sizeof(UniformBufferObject));
 
         this->device->logical()->updateDescriptorSets(
             vk::WriteDescriptorSet(descriptor_sets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &buffer_info), {});
@@ -205,10 +206,10 @@ void DepthRectangleDemo::createSecondaryCommandBuffers() {
     this->secondary_command_buffers.resize(command_buffers.size());
     for (size_t i = 0; i < command_buffers.size(); i++) {
         this->secondary_command_buffers[i] = new ao::vulkan::GraphicsPrimaryCommandBuffer::SecondaryCommandBuffer(
-            command_buffers[i],
-            [pipeline = this->pipelines["main"], indices_count = this->indices.size(), rectangles = this->model_buffer.get(),
-             &ubo_buffer = this->ubo_buffer](vk::CommandBuffer command_buffer, vk::CommandBufferInheritanceInfo const& inheritance_info,
-                                             vk::Extent2D swapchain_extent, int frame_index) {
+            command_buffers[i], [pipeline = this->pipelines["main"], indices_count = this->indices.size(), vertices_count = this->vertices.size(),
+                                 rectangles = this->model_buffer.get(), &ubo_buffer = this->ubo_buffer](
+                                    vk::CommandBuffer command_buffer, vk::CommandBufferInheritanceInfo const& inheritance_info,
+                                    vk::Extent2D swapchain_extent, int frame_index) {
                 // Create info
                 vk::CommandBufferBeginInfo begin_info =
                     vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eRenderPassContinue).setPInheritanceInfo(&inheritance_info);
@@ -224,8 +225,9 @@ void DepthRectangleDemo::createSecondaryCommandBuffers() {
                     command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline->value());
 
                     // Draw rectangles
-                    command_buffer.bindVertexBuffers(0, rectangles->buffer(), {0});
-                    command_buffer.bindIndexBuffer(rectangles->buffer(), rectangles->offset(1), vk::IndexType::eUint16);
+                    command_buffer.bindVertexBuffers(0, rectangles->info().buffer, {0});
+                    command_buffer.bindIndexBuffer(rectangles->info().buffer, rectangles->offset(vertices_count * sizeof(Vertex)),
+                                                   vk::IndexType::eUint16);
                     command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline->layout()->value(), 0,
                                                       pipeline->pools().front().descriptorSets().at(frame_index), {});
 
@@ -248,14 +250,15 @@ void DepthRectangleDemo::beforeCommandBuffersUpdate() {
 
         // Init uniform buffers
         for (size_t i = 0; i < this->swapchain->size(); i++) {
-            this->uniform_buffers[i].view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+            auto& ubo = this->ubo_buffer->at(i);
 
-            this->uniform_buffers[i].proj =
-                glm::perspective(glm::radians(45.0f), this->swapchain->extent().width / (float)this->swapchain->extent().height, 0.1f, 10.0f);
-            this->uniform_buffers[i].proj[1][1] *= -1;  // Adapt for vulkan
-
-            this->uniform_buffers[i].rotation = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+            ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+            ubo.proj = glm::perspective(glm::radians(45.0f), this->swapchain->extent().width / (float)this->swapchain->extent().height, 0.1f, 10.0f);
+            ubo.proj[1][1] *= -1;  // Adapt for vulkan
+            ubo.rotation = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+            ubo.scale = 1.0f;
         }
+        this->ubo_buffer->invalidate(0, this->ubo_buffer->size());
 
         return;
     }
@@ -264,17 +267,19 @@ void DepthRectangleDemo::beforeCommandBuffersUpdate() {
     float delta_time = std::chrono::duration<float, std::chrono::seconds::period>(std::chrono::system_clock::now() - this->clock).count();
 
     // Update uniform buffer
-    this->uniform_buffers[this->swapchain->frameIndex()].rotation =
+    this->ubo_buffer->at(this->swapchain->frameIndex()).rotation =
         glm::rotate(glm::mat4(1.0f), delta_time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 
     if (this->swapchain->state() == ao::vulkan::SwapchainState::eReset) {
         for (size_t i = 0; i < this->swapchain->size(); i++) {
-            this->uniform_buffers[i].proj =
-                glm::perspective(glm::radians(45.0f), this->swapchain->extent().width / (float)this->swapchain->extent().height, 0.1f, 10.0f);
-            this->uniform_buffers[i].proj[1][1] *= -1;  // Adapt for vulkan
-        }
-    }
+            auto& ubo = this->ubo_buffer->at(i);
 
-    // Update buffer
-    this->ubo_buffer->updateFragment(this->swapchain->frameIndex(), &this->uniform_buffers[this->swapchain->frameIndex()]);
+            ubo.proj = glm::perspective(glm::radians(45.0f), this->swapchain->extent().width / static_cast<float>(this->swapchain->extent().height),
+                                        0.1f, 10.0f);
+            ubo.proj[1][1] *= -1;  // Adapt for vulkan
+        }
+        this->ubo_buffer->invalidate(0, this->ubo_buffer->size());
+    } else {
+        this->ubo_buffer->invalidate(this->swapchain->frameIndex());
+    }
 }

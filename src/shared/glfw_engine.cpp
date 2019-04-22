@@ -13,6 +13,7 @@
 
 #include "metrics/counter_metric.hpp"
 #include "metrics/duration_metric.hpp"
+#include "metrics/lambda_metric.h"
 
 ao::vulkan::GLFWEngine::GLFWEngine(std::shared_ptr<EngineSettings> settings) : Engine(settings), window(nullptr) {}
 
@@ -70,8 +71,8 @@ void ao::vulkan::GLFWEngine::initWindow() {
     }
 
     // Create window
-    this->window = glfwCreateWindow(static_cast<int>(this->settings_->get<u32>(ao::vulkan::settings::WindowWidth)),
-                                    static_cast<int>(this->settings_->get<u32>(ao::vulkan::settings::WindowHeight)),
+    this->window = glfwCreateWindow(static_cast<int>(this->settings_->get<u32>(ao::vulkan::settings::SurfaceWidth)),
+                                    static_cast<int>(this->settings_->get<u32>(ao::vulkan::settings::SurfaceHeight)),
                                     this->settings_->get<std::string>(ao::vulkan::settings::WindowTitle).c_str(), nullptr, nullptr);
     glfwSetWindowUserPointer(this->window, this);
 
@@ -119,18 +120,29 @@ void ao::vulkan::GLFWEngine::freeVulkan() {
         delete buffer;
     }
 
+    // Allocators
+    this->device_allocator.reset();
+    this->device_uniform_allocator.reset();
+    this->host_uniform_allocator.reset();
+    this->host_allocator.reset();
+
     ao::vulkan::Engine::freeVulkan();
 }
 
-void ao::vulkan::GLFWEngine::initVulkan() {
-    ao::vulkan::Engine::initVulkan();
+void ao::vulkan::GLFWEngine::createAllocators() {
+    auto ubo_alignement = this->device->physical().getProperties().limits.minUniformBufferOffsetAlignment;
 
-    // Create command pool
-    this->secondary_command_pool = std::make_unique<ao::vulkan::CommandPool>(
-        this->device->logical(), vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
-        this->device->queues()->at(vk::to_string(vk::QueueFlagBits::eGraphics)).family_index, ao::vulkan::CommandPoolAccessMode::eConcurrent);
+    // Device
+    this->device_allocator = std::make_shared<ao::vulkan::DeviceAllocator>(this->device, vk::CommandBufferUsageFlagBits::eRenderPassContinue);
+    this->device_uniform_allocator =
+        std::make_shared<ao::vulkan::DeviceAllocator>(this->device, vk::CommandBufferUsageFlagBits::eRenderPassContinue, ubo_alignement);
 
-    // Init metric module
+    // Host
+    this->host_uniform_allocator = std::make_shared<ao::vulkan::HostAllocator>(this->device, ubo_alignement);
+    this->host_allocator = std::make_shared<ao::vulkan::HostAllocator>(this->device);
+}
+
+void ao::vulkan::GLFWEngine::createMetrics() {
     this->metrics = std::make_unique<ao::vulkan::MetricModule>(this->device);
     this->metrics->add("CPU", new ao::vulkan::BasicDurationMetric<std::chrono::duration<double, std::milli>>("ms"));
     this->metrics->add(
@@ -138,6 +150,47 @@ void ao::vulkan::GLFWEngine::initVulkan() {
     this->metrics->add("Triangle/s", new ao::vulkan::CounterCommandBufferMetric<std::chrono::seconds, u64>(
                                          0, std::make_pair(this->device, this->metrics->triangleQueryPool())));
     this->metrics->add("Frame/s", new ao::vulkan::CounterMetric<std::chrono::seconds, int>(0));
+    this->metrics->add("Memory(GPU)",
+                       new ao::vulkan::LambdaMetric([& allocator = this->device_allocator, &allocator_2 = this->device_uniform_allocator]() {
+                           auto size = allocator->sizeOnDevice() + allocator_2->sizeOnDevice();
+
+                           if (size < 1000) {
+                               return fmt::format("{}B", size);
+                           }
+
+                           auto suffixes = "KMGTPE";
+                           double exp = std::log10(size) / std::log10(1000);
+
+                           return fmt::format("{:.{}f}{}B", size / std::pow(1000, static_cast<int>(exp)), 2, suffixes[static_cast<int>(exp) - 1]);
+                       }));
+    this->metrics->add("Memory(CPU)",
+                       new ao::vulkan::LambdaMetric([& allocator = this->host_allocator, &allocator_2 = this->host_uniform_allocator]() {
+                           auto size = allocator->size() + allocator_2->size();
+
+                           if (size < 1000) {
+                               return fmt::format("{}B", size);
+                           }
+
+                           auto suffixes = "KMGTPE";
+                           double exp = std::log10(size) / std::log10(1000);
+
+                           return fmt::format("{:.{}f}{}B", size / std::pow(1000, static_cast<int>(exp)), 2, suffixes[static_cast<int>(exp) - 1]);
+                       }));
+}
+
+void ao::vulkan::GLFWEngine::initVulkan() {
+    ao::vulkan::Engine::initVulkan();
+
+    // Create allocators
+    this->createAllocators();
+
+    // Create command pool
+    this->secondary_command_pool = std::make_unique<ao::vulkan::CommandPool>(
+        this->device->logical(), vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
+        this->device->queues()->at(vk::to_string(vk::QueueFlagBits::eGraphics)).family_index, ao::vulkan::CommandPoolAccessMode::eConcurrent);
+
+    // Create metrics
+    this->createMetrics();
 }
 
 void ao::vulkan::GLFWEngine::prepareVulkan() {

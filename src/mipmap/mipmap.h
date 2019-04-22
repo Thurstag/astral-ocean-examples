@@ -11,8 +11,7 @@
 
 #include <ao/vulkan/engine/settings.h>
 #include <ao/vulkan/wrapper/shader_module.h>
-#include <ao/vulkan/buffer/array/basic_buffer.hpp>
-#include <ao/vulkan/buffer/tuple/staging_buffer.hpp>
+#include <ao/vulkan/memory/vector.hpp>
 #include <glm/gtx/rotate_vector.hpp>
 #include <glm/gtx/string_cast.hpp>
 #include <vulkan/vulkan.hpp>
@@ -30,17 +29,17 @@ class MipmapDemo : public ao::vulkan::GLFWEngine {
 
     std::vector<TexturedVertex> vertices;
     std::vector<u32> indices;
+    size_t vertices_count;
     u32 indices_count;
 
-    std::unique_ptr<ao::vulkan::BasicDynamicArrayBuffer<UniformBufferObject>> ubo_buffer;
-    std::unique_ptr<ao::vulkan::StagingTupleBuffer<TexturedVertex, u32>> model_buffer;
-    std::tuple<vk::Image, vk::DeviceMemory, vk::ImageView> texture;
-    vk::Sampler texture_sampler;
+    std::tuple<vk::Image, vk::DeviceMemory, vk::ImageView> texture, mipmap_texture;
+    std::unique_ptr<ao::vulkan::Vector<UniformBufferObject>> ubo_buffer;
+    std::unique_ptr<ao::vulkan::Vector<char>> model_buffer;
+    vk::Sampler texture_sampler, mipmap_texture_sampler;
 
     std::vector<ao::vulkan::GraphicsPrimaryCommandBuffer::SecondaryCommandBuffer*> secondary_command_buffers;
 
     std::tuple<glm::vec3, float, float, float> camera;
-    std::vector<UniformBufferObject> uniform_buffers;
 
     explicit MipmapDemo(std::shared_ptr<ao::vulkan::EngineSettings> settings) : ao::vulkan::GLFWEngine(settings){};
     virtual ~MipmapDemo() = default;

@@ -5,6 +5,7 @@
 #include "texture_array.h"
 
 #include <ao/vulkan/pipeline/graphics_pipeline.h>
+#include <ao/vulkan/utilities/device.h>
 #include <boost/filesystem.hpp>
 #include <gli/gli.hpp>
 
@@ -36,9 +37,9 @@ void TextureArrayDemo::onKeyEventCallback(GLFWwindow* window, int key, int scanc
 
 void TextureArrayDemo::freeVulkan() {
     // Free buffers
-    this->model_buffer.reset();
     this->ubo_buffer.reset();
     this->instance_buffer.reset();
+    this->model_buffer.reset();
 
     // Free wrappers
     for (auto buffer : this->secondary_command_buffers) {
@@ -224,24 +225,23 @@ void TextureArrayDemo::createPipelines() {
 
 void TextureArrayDemo::createVulkanBuffers() {
     // Create vertices & indices
-    this->model_buffer =
-        std::make_unique<ao::vulkan::StagingTupleBuffer<TexturedVertex, u16>>(this->device, vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
-    this->model_buffer->init({sizeof(TexturedVertex) * this->vertices.size(), sizeof(u16) * this->indices.size()})
-        ->update(this->vertices.data(), this->indices.data());
+    this->model_buffer = std::make_unique<ao::vulkan::Vector<char>>(
+        sizeof(TexturedVertex) * this->vertices.size() + sizeof(u16) * this->indices.size(), this->device_allocator,
+        vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eVertexBuffer);
 
-    this->model_buffer->freeHostBuffer();
+    std::copy(this->vertices.data(), this->vertices.data() + this->vertices.size(), reinterpret_cast<TexturedVertex*>(&this->model_buffer->at(0)));
+    std::copy(this->indices.data(), this->indices.data() + this->indices.size(),
+              reinterpret_cast<u16*>(&this->model_buffer->at(sizeof(TexturedVertex) * this->vertices.size())));
+    this->model_buffer->invalidate(0, this->model_buffer->size());
 
-    this->ubo_buffer = std::make_unique<ao::vulkan::BasicDynamicArrayBuffer<UBO>>(this->swapchain->size(), this->device);
-    this->ubo_buffer->init(vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, vk::MemoryPropertyFlagBits::eHostVisible,
-                           ao::vulkan::Buffer::CalculateUBOAligmentSize(this->device->physical(), sizeof(UBO)));
+    // Free host buffer
+    this->device_allocator->freeHost(this->model_buffer->info());
 
-    // Resize uniform buffers vector
-    this->uniform_buffers.resize(this->swapchain->size());
+    this->ubo_buffer =
+        std::make_unique<ao::vulkan::Vector<UBO>>(this->swapchain->size(), this->host_uniform_allocator, vk::BufferUsageFlagBits::eUniformBuffer);
 
-    this->instance_buffer =
-        std::make_unique<ao::vulkan::BasicDynamicArrayBuffer<UBO::InstanceData>>(INSTANCE_COUNT * this->swapchain->size(), this->device);
-    this->instance_buffer->init(vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, vk::MemoryPropertyFlagBits::eHostVisible,
-                                sizeof(UBO::InstanceData));
+    this->instance_buffer = std::make_unique<ao::vulkan::Vector<UBO::InstanceData>>(INSTANCE_COUNT * this->swapchain->size(), this->host_allocator,
+                                                                                    vk::BufferUsageFlagBits::eVertexBuffer);
 
     /* TEXTURE CREATION */
 
@@ -262,11 +262,11 @@ void TextureArrayDemo::createVulkanBuffers() {
     this->LOGGER << ao::core::Logger::Level::debug << fmt::format("Load texture with format: {}", vk::to_string(image_format));
 
     // Create buffer
-    auto texture_buffer = ao::vulkan::BasicTupleBuffer<u8>(this->device);
-    texture_buffer
-        .init(vk::BufferUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive,
-              vk::MemoryPropertyFlagBits::eHostCoherent | vk::MemoryPropertyFlagBits::eHostVisible, {texture_image.size()})
-        ->update(static_cast<u8*>(texture_image.data()));
+    ao::vulkan::Vector<u8> texture_buffer(texture_image.size() / sizeof(u8), this->host_allocator, vk::BufferUsageFlagBits::eTransferSrc);
+    for (size_t i = 0; i < texture_buffer.size(); i++) {
+        texture_buffer[i] = *(static_cast<u8*>(texture_image.data()) + i);
+    }
+    texture_buffer.invalidate(0, texture_buffer.size());
 
     // Create image
     auto image = ao::vulkan::utilities::createImage(
@@ -293,8 +293,8 @@ void TextureArrayDemo::createVulkanBuffers() {
                                              std::get<0>(this->texture), image_format,
                                              vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, this->array_levels),
                                              vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
-    ao::vulkan::utilities::copyBufferToImage(*this->device->logical(), this->device->transferPool(), *this->device->queues(), texture_buffer.buffer(),
-                                             std::get<0>(this->texture), regions);
+    ao::vulkan::utilities::copyBufferToImage(*this->device->logical(), this->device->transferPool(), *this->device->queues(),
+                                             texture_buffer.info().buffer, std::get<0>(this->texture), regions);
     ao::vulkan::utilities::updateImageLayout(*this->device->logical(), this->device->graphicsPool(), *this->device->queues(),
                                              std::get<0>(this->texture), image_format,
                                              vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, this->array_levels),
@@ -322,7 +322,7 @@ void TextureArrayDemo::createVulkanBuffers() {
     // Configure
     for (size_t i = 0; i < this->swapchain->size(); i++) {
         vk::DescriptorImageInfo sample_info(this->texture_sampler, std::get<2>(this->texture), vk::ImageLayout::eShaderReadOnlyOptimal);
-        vk::DescriptorBufferInfo buffer_info(this->ubo_buffer->buffer(), this->ubo_buffer->offset(i), sizeof(UBO));
+        vk::DescriptorBufferInfo buffer_info(this->ubo_buffer->info().buffer, this->ubo_buffer->offset(i), sizeof(UBO));
 
         this->device->logical()->updateDescriptorSets(
             vk::WriteDescriptorSet(descriptor_sets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &buffer_info), {});
@@ -340,8 +340,8 @@ void TextureArrayDemo::createSecondaryCommandBuffers() {
     for (size_t i = 0; i < command_buffers.size(); i++) {
         this->secondary_command_buffers[i] = new ao::vulkan::GraphicsPrimaryCommandBuffer::SecondaryCommandBuffer(
             command_buffers[i],
-            [pipeline = this->pipelines["main"], indices_count = this->indices.size(), rectangles = this->model_buffer.get(),
-             instance = this->instance_buffer.get(), array_level_index = &this->array_level_index,
+            [pipeline = this->pipelines["main"], indices_count = this->indices.size(), vertices_count = this->vertices.size(),
+             rectangle = this->model_buffer.get(), instance = this->instance_buffer.get(), array_level_index = &this->array_level_index,
              swapchain_size = this->swapchain->size()](vk::CommandBuffer command_buffer, vk::CommandBufferInheritanceInfo const& inheritance_info,
                                                        vk::Extent2D swapchain_extent, int frame_index) {
                 // Begin info
@@ -362,9 +362,10 @@ void TextureArrayDemo::createSecondaryCommandBuffers() {
                     command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline->value());
 
                     // Draw rectangles
-                    command_buffer.bindVertexBuffers(0, rectangles->buffer(), {0});
-                    command_buffer.bindVertexBuffers(1, instance->buffer(), {(instance->size() / swapchain_size) * frame_index});
-                    command_buffer.bindIndexBuffer(rectangles->buffer(), rectangles->offset(1), vk::IndexType::eUint16);
+                    command_buffer.bindVertexBuffers(0, rectangle->info().buffer, {0});
+                    command_buffer.bindVertexBuffers(1, instance->info().buffer, {instance->offset(INSTANCE_COUNT * frame_index)});
+                    command_buffer.bindIndexBuffer(rectangle->info().buffer, rectangle->offset(sizeof(TexturedVertex) * vertices_count),
+                                                   vk::IndexType::eUint16);
                     command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline->layout()->value(), 0,
                                                       pipeline->pools().front().descriptorSets().at(frame_index), {});
 
@@ -385,8 +386,6 @@ void TextureArrayDemo::beforeCommandBuffersUpdate() {
         this->clock = std::chrono::system_clock::now();
         this->clock_start = true;
 
-        std::vector<UBO::InstanceData> instance_data(this->swapchain->size() * INSTANCE_COUNT);
-
         // Init uniform buffers
         for (size_t i = 0; i < this->swapchain->size(); i++) {
             std::vector<glm::vec4> positions(INSTANCE_COUNT);
@@ -395,29 +394,32 @@ void TextureArrayDemo::beforeCommandBuffersUpdate() {
             }
             std::sort(positions.begin(), positions.end(), [](glm::vec4 v, glm::vec4 v2) { return v.z < v2.z; });
             for (size_t j = 0; j < INSTANCE_COUNT; j++) {
-                instance_data[(INSTANCE_COUNT * i) + j].rotation = glm::rotate(glm::mat4(1.0f), glm::radians(360.0f), glm::vec3(.0f, 0.0f, 1.0f));
-                instance_data[(INSTANCE_COUNT * i) + j].position_and_scale = positions[j];
+                auto& instance = this->instance_buffer->at((INSTANCE_COUNT * i) + j);
+
+                instance.rotation = glm::rotate(glm::mat4(1.0f), glm::radians(360.0f), glm::vec3(.0f, 0.0f, 1.0f));
+                instance.position_and_scale = positions[j];
             }
 
-            this->uniform_buffers[i].proj =
-                glm::perspective(glm::radians(45.0f), this->swapchain->extent().width / (float)this->swapchain->extent().height, 0.1f, 10.0f);
-            this->uniform_buffers[i].proj[1][1] *= -1;  // Adapt for vulkan
+            auto& ubo = this->ubo_buffer->at(i);
 
-            this->uniform_buffers[i].view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+            ubo.proj = glm::perspective(glm::radians(45.0f), this->swapchain->extent().width / static_cast<float>(this->swapchain->extent().height),
+                                        0.1f, 10.0f);
+            ubo.proj[1][1] *= -1;  // Adapt for vulkan
+            ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         }
-        this->ubo_buffer->update(this->uniform_buffers);
-        this->instance_buffer->update(instance_data);
-
+        this->ubo_buffer->invalidate(0, this->ubo_buffer->size());
+        this->instance_buffer->invalidate(0, this->instance_buffer->size());
         return;
     }
 
-    // Update uniform buffer
     if (this->swapchain->state() == ao::vulkan::SwapchainState::eReset) {
         for (size_t i = 0; i < this->swapchain->size(); i++) {
-            this->uniform_buffers[i].proj =
-                glm::perspective(glm::radians(45.0f), this->swapchain->extent().width / (float)this->swapchain->extent().height, 0.1f, 10.0f);
-            this->uniform_buffers[i].proj[1][1] *= -1;  // Adapt for vulkan
+            auto& ubo = this->ubo_buffer->at(i);
+
+            ubo.proj = glm::perspective(glm::radians(45.0f), this->swapchain->extent().width / static_cast<float>(this->swapchain->extent().height),
+                                        0.1f, 10.0f);
+            ubo.proj[1][1] *= -1;  // Adapt for vulkan
         }
-        this->ubo_buffer->update(this->uniform_buffers);
+        this->ubo_buffer->invalidate(0, this->ubo_buffer->size());
     }
 }

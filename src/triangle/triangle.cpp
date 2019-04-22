@@ -131,13 +131,19 @@ void TriangleDemo::createPipelines() {
 }
 
 void TriangleDemo::createVulkanBuffers() {
-    this->vertices_buffer = std::make_unique<ao::vulkan::StagingTupleBuffer<Vertex>>(this->device, vk::CommandBufferUsageFlagBits::eSimultaneousUse);
-    this->vertices_buffer->init({sizeof(Vertex) * this->vertices.size()}, vk::BufferUsageFlags(vk::BufferUsageFlagBits::eVertexBuffer))
-        ->update(this->vertices.data());
+    this->vertices_buffer =
+        std::make_unique<ao::vulkan::Vector<Vertex>>(this->vertices.size(), this->device_allocator, vk::BufferUsageFlagBits::eVertexBuffer);
+    for (size_t i = 0; i < this->vertices.size(); i++) {
+        this->vertices_buffer->at(i) = this->vertices[i];
+    }
+    this->vertices_buffer->invalidate(0, this->vertices_buffer->size());
 
-    this->indices_buffer = std::make_unique<ao::vulkan::StagingTupleBuffer<u16>>(this->device, vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
-    this->indices_buffer->init({sizeof(u16) * this->indices.size()}, vk::BufferUsageFlags(vk::BufferUsageFlagBits::eIndexBuffer))
-        ->update(this->indices.data());
+    this->indices_buffer =
+        std::make_unique<ao::vulkan::Vector<u16>>(this->indices.size(), this->device_allocator, vk::BufferUsageFlagBits::eIndexBuffer);
+    for (size_t i = 0; i < this->indices.size(); i++) {
+        this->indices_buffer->at(i) = this->indices[i];
+    }
+    this->indices_buffer->invalidate(0, this->indices_buffer->size());
 }
 
 void TriangleDemo::createSecondaryCommandBuffers() {
@@ -166,8 +172,8 @@ void TriangleDemo::createSecondaryCommandBuffers() {
                     command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline->value());
 
                     // Draw triangle
-                    command_buffer.bindVertexBuffers(0, {vertices_buffer->buffer()}, {0});
-                    command_buffer.bindIndexBuffer(indices_buffer->buffer(), 0, vk::IndexType::eUint16);
+                    command_buffer.bindVertexBuffers(0, {vertices_buffer->info().buffer}, {0});
+                    command_buffer.bindIndexBuffer(indices_buffer->info().buffer, 0, vk::IndexType::eUint16);
 
                     command_buffer.drawIndexed(static_cast<u32>(indices_count), 1, 0, 0, 0);
                 }
@@ -207,7 +213,10 @@ void TriangleDemo::beforeCommandBuffersUpdate() {
     }
 
     // Update vertex buffer
-    this->vertices_buffer->update(this->vertices.data());
+    for (size_t i = 0; i < this->vertices.size(); i++) {
+        this->vertices_buffer->at(i) = this->vertices[i];
+    }
+    this->vertices_buffer->invalidate(0, this->vertices_buffer->size());
 
     // Update clock
     this->clock = std::chrono::system_clock::now();

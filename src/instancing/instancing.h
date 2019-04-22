@@ -12,8 +12,7 @@
 
 #include <ao/vulkan/engine/settings.h>
 #include <ao/vulkan/wrapper/shader_module.h>
-#include <ao/vulkan/buffer/array/basic_buffer.hpp>
-#include <ao/vulkan/buffer/tuple/staging_buffer.hpp>
+#include <ao/vulkan/memory/vector.hpp>
 #include <glm/gtx/rotate_vector.hpp>
 #include <glm/gtx/string_cast.hpp>
 #include <vulkan/vulkan.hpp>
@@ -32,13 +31,12 @@ class InstancingDemo : public ao::vulkan::GLFWEngine {
     std::vector<Vertex> vertices;
     std::vector<u16> indices;
 
-    std::unique_ptr<ao::vulkan::BasicDynamicArrayBuffer<UBO::InstanceData>> instance_buffer;
-    std::unique_ptr<ao::vulkan::StagingTupleBuffer<Vertex, u16>> model_buffer;
-    std::unique_ptr<ao::vulkan::BasicDynamicArrayBuffer<UBO>> ubo_buffer;
+    std::unique_ptr<ao::vulkan::Vector<UBO::InstanceData>> instance_buffer;
+    std::unique_ptr<ao::vulkan::Vector<char>> model_buffer;
+    std::unique_ptr<ao::vulkan::Vector<UBO>> ubo_buffer;
 
     std::vector<ao::vulkan::GraphicsPrimaryCommandBuffer::SecondaryCommandBuffer*> secondary_command_buffers;
 
-    std::vector<UBO> uniform_buffers;
     std::vector<float> rotations;
 
     explicit InstancingDemo(std::shared_ptr<ao::vulkan::EngineSettings> settings)

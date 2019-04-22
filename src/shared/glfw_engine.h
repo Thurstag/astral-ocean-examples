@@ -16,6 +16,8 @@
 #endif
 
 #include <ao/vulkan/engine/engine.h>
+#include <ao/vulkan/memory/allocator/device_allocator.h>
+#include <ao/vulkan/memory/allocator/host_allocator.h>
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
@@ -90,6 +92,11 @@ namespace ao::vulkan {
         std::map<u64, std::pair<u64, u64>> key_states;
         std::unique_ptr<MetricModule> metrics;
 
+        std::shared_ptr<DeviceAllocator> device_uniform_allocator;
+        std::shared_ptr<HostAllocator> host_uniform_allocator;
+        std::shared_ptr<DeviceAllocator> device_allocator;
+        std::shared_ptr<HostAllocator> host_allocator;
+
         /**
          * @brief Create secondary command buffers
          *
@@ -107,6 +114,18 @@ namespace ao::vulkan {
          *
          */
         virtual void createVulkanBuffers() = 0;
+
+        /**
+         * @brief Create allocators
+         *
+         */
+        virtual void createAllocators();
+
+        /**
+         * @brief Create metrics
+         *
+         */
+        virtual void createMetrics();
 
         void initWindow() override;
         vk::SurfaceKHR createSurface() override;
