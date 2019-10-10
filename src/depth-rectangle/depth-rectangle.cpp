@@ -160,9 +160,9 @@ void DepthRectangleDemo::createPipelines() {
     std::array<vk::DescriptorPoolSize, 1> pool_sizes;
     pool_sizes[0] = vk::DescriptorPoolSize(vk::DescriptorType::eUniformBuffer, static_cast<u32>(this->swapchain->size()));
 
-    this->pipelines["main"]->pools().push_back(ao::vulkan::DescriptorPool(
+    this->pipelines["main"]->pools().emplace_back(
         this->device->logical(), vk::DescriptorPoolCreateInfo(vk::DescriptorPoolCreateFlags(), static_cast<u32>(this->swapchain->size()),
-                                                              static_cast<u32>(pool_sizes.size()), pool_sizes.data())));
+                                                              static_cast<u32>(pool_sizes.size()), pool_sizes.data()));
 }
 
 void DepthRectangleDemo::createVulkanBuffers() {
@@ -255,7 +255,8 @@ void DepthRectangleDemo::beforeCommandBuffersUpdate() {
             ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
             ubo.proj = glm::perspective(glm::radians(45.0f), this->swapchain->extent().width / (float)this->swapchain->extent().height, 0.1f, 10.0f);
             ubo.proj[1][1] *= -1;  // Adapt for vulkan
-            ubo.rotation = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+            ubo.rotation = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f),
+                                       glm::vec3(0.0f, 0.0f, 1.0f));  // TODO: Create a custom glm::radians with a constexpr
             ubo.scale = 1.0f;
         }
         this->ubo_buffer->invalidate(0, this->ubo_buffer->size());

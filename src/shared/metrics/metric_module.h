@@ -84,6 +84,7 @@ namespace ao::vulkan {
 
        private:
         std::unordered_map<std::string, Metric*> metrics;
+        std::mutex metrics_mutex;
 
         vk::QueryPool timestamp_query_pool;
         vk::QueryPool triangle_query_pool;

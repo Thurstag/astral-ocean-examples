@@ -27,6 +27,7 @@ using UBO = InstanceUniformBufferObject;
 class TextureArrayDemo : public ao::vulkan::GLFWEngine {
    public:
     std::chrono::time_point<std::chrono::system_clock> clock;
+    std::pair<int, int> key_last_states;
     bool clock_start = false;
 
     std::vector<TexturedVertex> vertices;
@@ -52,7 +53,7 @@ class TextureArrayDemo : public ao::vulkan::GLFWEngine {
           indices({0, 1, 2, 2, 3, 0}){};
     virtual ~TextureArrayDemo() = default;
 
-    virtual void onKeyEventCallback(GLFWwindow* window, int key, int scancode, int action, int mods) override;
+    void initVulkan() override;
     void freeVulkan() override;
     vk::RenderPass createRenderPass() override;
     void createPipelines() override;

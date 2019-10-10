@@ -21,15 +21,6 @@ void ao::vulkan::GLFWEngine::OnFramebufferSizeCallback(GLFWwindow* window, int w
     static_cast<ao::vulkan::GLFWEngine*>(glfwGetWindowUserPointer(window))->enforce_resize = true;
 }
 
-void ao::vulkan::GLFWEngine::OnKeyEventCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-    static_cast<ao::vulkan::GLFWEngine*>(glfwGetWindowUserPointer(window))->onKeyEventCallback(window, key, scancode, action, mods);
-}
-
-void ao::vulkan::GLFWEngine::onKeyEventCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-    this->key_states[key].first = this->key_states[key].second;
-    this->key_states[key].second = action;
-}
-
 std::vector<u8> ao::vulkan::GLFWEngine::LoadCache(std::string const& file) {
     if (!boost::filesystem::exists(file)) {
         return {};
@@ -85,8 +76,8 @@ void ao::vulkan::GLFWEngine::initWindow() {
     // Define buffer resize callback
     glfwSetFramebufferSizeCallback(this->window, ao::vulkan::GLFWEngine::OnFramebufferSizeCallback);
 
-    // Define key callback
-    glfwSetKeyCallback(this->window, ao::vulkan::GLFWEngine::OnKeyEventCallback);
+    // Change input mode
+    glfwSetInputMode(this->window, GLFW_STICKY_KEYS, GLFW_TRUE);
 }
 
 vk::SurfaceKHR ao::vulkan::GLFWEngine::createSurface() {
@@ -108,6 +99,9 @@ bool ao::vulkan::GLFWEngine::isIconified() const {
 void ao::vulkan::GLFWEngine::freeVulkan() {
     // Free module
     this->metrics.reset();
+
+    // Stop scheduler
+    this->scheduler.stop();
 
     // Free window
     this->freeWindow();
@@ -254,6 +248,9 @@ void ao::vulkan::GLFWEngine::prepareVulkan() {
 
     // Create secondary command buffers
     this->createSecondaryCommandBuffers();
+
+    // Run task scheduler
+    this->scheduler.run();
 }
 
 void ao::vulkan::GLFWEngine::createVulkanObjects() {

@@ -15,6 +15,8 @@ ao::vulkan::MetricModule::MetricModule(std::shared_ptr<Device> device) : device(
 }
 
 ao::vulkan::MetricModule::~MetricModule() {
+    std::lock_guard lock(this->metrics_mutex);
+
     for (auto& pair : this->metrics) {
         delete pair.second;
     }
@@ -25,6 +27,8 @@ ao::vulkan::MetricModule::~MetricModule() {
 }
 
 ao::vulkan::Metric* ao::vulkan::MetricModule::operator[](std::string name) {
+    std::lock_guard lock(this->metrics_mutex);
+
     auto it = std::find_if(this->metrics.begin(), this->metrics.end(),
                            [name](std::pair<std::string, ao::vulkan::Metric*> const& pair) { return name == pair.first; });
 
@@ -35,10 +39,14 @@ ao::vulkan::Metric* ao::vulkan::MetricModule::operator[](std::string name) {
 }
 
 void ao::vulkan::MetricModule::add(std::string name, ao::vulkan::Metric* metric) {
+    std::lock_guard lock(this->metrics_mutex);
+
     this->metrics[name] = metric;
 }
 
 void ao::vulkan::MetricModule::remove(std::string name) {
+    std::lock_guard lock(this->metrics_mutex);
+
     auto it = std::find_if(this->metrics.begin(), this->metrics.end(),
                            [name](std::pair<std::string, ao::vulkan::Metric*> const& pair) { return name == pair.first; });
 
@@ -53,6 +61,8 @@ void ao::vulkan::MetricModule::remove(std::string name) {
 }
 
 void ao::vulkan::MetricModule::reset() {
+    std::lock_guard lock(this->metrics_mutex);
+
     for (auto& pair : this->metrics) {
         pair.second->reset();
     }
@@ -67,6 +77,7 @@ vk::QueryPool ao::vulkan::MetricModule::triangleQueryPool() {
 }
 
 std::string ao::vulkan::MetricModule::str() {
+    std::lock_guard lock(this->metrics_mutex);
     std::vector<std::string> strings;
 
     for (auto& pair : this->metrics) {

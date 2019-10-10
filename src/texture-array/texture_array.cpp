@@ -9,30 +9,38 @@
 #include <boost/filesystem.hpp>
 #include <gli/gli.hpp>
 
-void TextureArrayDemo::onKeyEventCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-    ao::vulkan::GLFWEngine::onKeyEventCallback(window, key, scancode, action, mods);
-    bool changed = false;
+void TextureArrayDemo::initVulkan() {
+    GLFWEngine::initVulkan();
 
-    if (key == GLFW_KEY_UP && action == GLFW_PRESS) {  // UP
-        this->array_level_index--;
-        if (this->array_level_index > this->array_levels) {
-            this->array_level_index = 0;
+    this->scheduler.schedule(60, [&]() {
+        auto states = std::make_pair<int, int>(glfwGetKey(window, GLFW_KEY_UP), glfwGetKey(window, GLFW_KEY_DOWN));
+        bool changed = false;
+
+        if (this->key_last_states.first == GLFW_RELEASE && states.first == GLFW_PRESS) {
+            this->array_level_index--;
+            if (this->array_level_index > this->array_levels) {
+                this->array_level_index = 0;
+            }
+
+            changed = true;
+        } else if (this->key_last_states.second == GLFW_RELEASE && states.second == GLFW_PRESS) {
+            this->array_level_index++;
+            this->array_level_index = std::min<u32>(this->array_level_index, this->array_levels - INSTANCE_COUNT);
+
+            changed = true;
         }
 
-        this->LOGGER << ao::core::Logger::Level::debug << fmt::format("Base array index: {}", array_level_index);
-        changed = true;
-    } else if (key == GLFW_KEY_DOWN && action == GLFW_PRESS) {  // DOWN
-        this->array_level_index++;
-        this->array_level_index = std::min<u32>(this->array_level_index, this->array_levels - INSTANCE_COUNT);
+        if (changed) {
+            LOG_MSG(debug) << fmt::format("Base array index: {}", array_level_index);
 
-        this->LOGGER << ao::core::Logger::Level::debug << fmt::format("Base array index: {}", array_level_index);
-        changed = true;
-    }
+            // Reset secondary command buffers
+            for (size_t i = 0; i < this->swapchain->size(); i++) {
+                this->primary_command_buffers[i]->invalidateSecondary();
+            }
+        }
 
-    // Reset secondary command buffers
-    for (size_t i = 0; i < this->swapchain->size(); i++) {
-        this->primary_command_buffers[i]->invalidateSecondary();
-    }
+        this->key_last_states = states;
+    });
 }
 
 void TextureArrayDemo::freeVulkan() {
@@ -259,7 +267,7 @@ void TextureArrayDemo::createVulkanBuffers() {
     this->array_levels = static_cast<u32>(texture_image.layers());
     auto image_format = vk::Format(texture_image.format());  // Convert format
 
-    this->LOGGER << ao::core::Logger::Level::debug << fmt::format("Load texture with format: {}", vk::to_string(image_format));
+    LOG_MSG(debug) << fmt::format("Load texture with format: {}", vk::to_string(image_format));
 
     // Create buffer
     ao::vulkan::Vector<u8> texture_buffer(texture_image.size() / sizeof(u8), this->host_allocator, vk::BufferUsageFlagBits::eTransferSrc);

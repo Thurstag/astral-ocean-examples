@@ -33,7 +33,7 @@ void MipmapDemo::setUpTexture() {
     }
     auto image_format = vk::Format(texture_image.format());  // Convert format
 
-    this->LOGGER << ao::core::Logger::Level::debug << fmt::format("Load texture with format: {}", vk::to_string(image_format));
+    LOG_MSG(debug) << fmt::format("Load texture with format: {}", vk::to_string(image_format));
 
     // Mipmap texture
     {
@@ -175,20 +175,28 @@ void MipmapDemo::setUpTexture() {
     }
 }
 
-void MipmapDemo::onKeyEventCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-    ao::vulkan::GLFWEngine::onKeyEventCallback(window, key, scancode, action, mods);
+void MipmapDemo::initVulkan() {
+    ao::vulkan::GLFWEngine::initVulkan();
+    static constexpr u16 tick_rate = 500;
 
-    // Toggle mimap
-    if (key == GLFW_KEY_T && action == GLFW_PRESS) {
-        this->settings_->get<bool>(MipMapKey) = !this->settings_->get<bool>(MipMapKey);
+    this->scheduler.schedule(tick_rate, [&]() {
+        auto toggle_state = glfwGetKey(window, GLFW_KEY_T);
 
-        // Invalidate command buffers
-        for (size_t i = 0; i < this->primary_command_buffers.size(); i++) {
-            this->primary_command_buffers[i]->invalidateSecondary();
+        // Toggle mimap
+        if (this->toggle_last_state == GLFW_RELEASE && toggle_state == GLFW_PRESS) {
+            this->settings_->get<bool>(MipMapKey) = !this->settings_->get<bool>(MipMapKey);
+
+            LOG_MSG(debug) << fmt::format("Mimap: {}", this->settings_->get<bool>(MipMapKey) ? "On" : "Off");
+
+            // Invalidate command buffers
+            for (size_t i = 0; i < this->primary_command_buffers.size(); i++) {
+                this->primary_command_buffers[i]->invalidateSecondary();
+            }
         }
 
-        this->LOGGER << ao::core::Logger::Level::debug << fmt::format("Mimap: {}", this->settings_->get<bool>(MipMapKey) ? "On" : "Off");
-    }
+        // Save state
+        this->toggle_last_state = toggle_state;
+    });
 }
 
 void MipmapDemo::freeVulkan() {
@@ -373,16 +381,16 @@ void MipmapDemo::createVulkanBuffers() {
 
     // Load
     ObjFile model;
-    this->LOGGER << ao::core::Logger::Level::trace << "=== Start loading model ===";
+    LOG_MSG(trace) << "=== Start loading model ===";
     if (!objParseFile(model, "assets/models/chalet.obj")) {
         throw ao::core::Exception("Error during model loading");
     }
     this->indices_count = static_cast<u32>(model.f_size / 3);
 
-    this->LOGGER << ao::core::Logger::Level::trace << fmt::format("Vertex count: {}", this->indices_count);
+    LOG_MSG(trace) << fmt::format("Vertex count: {}", this->indices_count);
 
     // Prepare vector
-    this->LOGGER << ao::core::Logger::Level::trace << "Filling vectors with model's data";
+    LOG_MSG(trace) << "Filling vectors with model's data";
     std::vector<MeshOptVertex> opt_vertices(this->indices_count);
 
     // Build vertices vector
@@ -406,7 +414,7 @@ void MipmapDemo::createVulkanBuffers() {
     }
 
     // Optimize mesh
-    this->LOGGER << ao::core::Logger::Level::trace << "Optimize mesh";
+    LOG_MSG(trace) << "Optimize mesh";
     std::vector<u32> remap_indices(this->indices_count);
     this->vertices_count = meshopt_generateVertexRemap(remap_indices.data(), nullptr, this->indices_count, opt_vertices.data(), this->indices_count,
                                                        sizeof(MeshOptVertex));
@@ -421,16 +429,16 @@ void MipmapDemo::createVulkanBuffers() {
     meshopt_optimizeVertexFetch(remap_vertices.data(), this->indices.data(), this->indices_count, remap_vertices.data(), vertices_count,
                                 sizeof(MeshOptVertex));
 
-    this->LOGGER << ao::core::Logger::Level::trace << fmt::format("Vertex count afer optimization: {}", vertices_count);
+    LOG_MSG(trace) << fmt::format("Vertex count afer optimization: {}", vertices_count);
 
     // Convert into TexturedVertex
-    this->LOGGER << ao::core::Logger::Level::trace << "Convert MeshOptVertex -> TexturedVertex";
+    LOG_MSG(trace) << "Convert MeshOptVertex -> TexturedVertex";
     this->vertices.resize(vertices_count);
     for (size_t i = 0; i < vertices_count; i++) {
         vertices[i] = {{remap_vertices[i].px, remap_vertices[i].py, remap_vertices[i].pz}, {remap_vertices[i].tx, remap_vertices[i].ty}};
     }
 
-    this->LOGGER << ao::core::Logger::Level::trace << "=== Model loading end ===";
+    LOG_MSG(trace) << "=== Model loading end ===";
 
     // Create vertices & indices
     this->model_buffer = std::make_unique<ao::vulkan::Vector<char>>(
@@ -504,9 +512,8 @@ void MipmapDemo::createSecondaryCommandBuffers() {
 }
 
 void MipmapDemo::beforeCommandBuffersUpdate() {
-    if (!this->clock_start) {
-        this->clock = std::chrono::system_clock::now();
-        this->clock_start = true;
+    if (!this->engine_start) {
+        this->engine_start = true;
 
         // Init camera
         std::get<0>(this->camera) = glm::vec3(2.0f, .0f, 1.0f);  // Position
@@ -533,36 +540,40 @@ void MipmapDemo::beforeCommandBuffersUpdate() {
     static constexpr float RotationTarget = 45.0f * boost::math::constants::pi<float>() / 180;
     float delta_time = std::chrono::duration<float, std::chrono::seconds::period>(std::chrono::system_clock::now() - this->clock).count();
 
+    // Get states
+    auto states = std::make_tuple(glfwGetKey(window, GLFW_KEY_RIGHT), glfwGetKey(window, GLFW_KEY_LEFT), glfwGetKey(window, GLFW_KEY_DOWN),
+                                  glfwGetKey(window, GLFW_KEY_UP), glfwGetKey(window, GLFW_KEY_PAGE_UP), glfwGetKey(window, GLFW_KEY_PAGE_DOWN));
+
     // Update camera
     float rotation = .0f;
     glm::vec3 angles = glm::vec3(.0f, .0f, 1.0f);
-    if (this->key_states[GLFW_KEY_LEFT].second == GLFW_PRESS || this->key_states[GLFW_KEY_LEFT].second == GLFW_REPEAT) {  // LEFT
+    if (std::get<GLFW_KEY_LEFT - 262>(states) == GLFW_PRESS) {  // LEFT
         rotation = -delta_time * RotationTarget;
         angles = glm::vec3(.0f, .0f, 1.0f);
 
         std::get<1>(this->camera) += rotation;
-    } else if (this->key_states[GLFW_KEY_RIGHT].second == GLFW_PRESS || this->key_states[GLFW_KEY_RIGHT].second == GLFW_REPEAT) {  // RIGHT
+    } else if (std::get<GLFW_KEY_RIGHT - 262>(states) == GLFW_PRESS) {  // RIGHT
         rotation = delta_time * RotationTarget;
         angles = glm::vec3(.0f, .0f, 1.0f);
 
         std::get<1>(this->camera) += rotation;
-    } else if (this->key_states[GLFW_KEY_UP].second == GLFW_PRESS || this->key_states[GLFW_KEY_UP].second == GLFW_REPEAT) {  // UP
+    } else if (std::get<GLFW_KEY_UP - 262>(states) == GLFW_PRESS) {  // UP
         if ((std::get<2>(this->camera) - rotation) * (180 / glm::pi<float>()) > -50.f) {
             rotation = -delta_time * RotationTarget;
             angles = glm::vec3(glm::rotate(glm::mat4(1.0f), std::get<1>(this->camera), glm::vec3(.0f, .0f, 1.0f)) * glm::vec4(.0f, 1.0f, .0f, .0f));
 
             std::get<2>(this->camera) += rotation;
         }
-    } else if (this->key_states[GLFW_KEY_DOWN].second == GLFW_PRESS || this->key_states[GLFW_KEY_DOWN].second == GLFW_REPEAT) {  // DOWN
+    } else if (std::get<GLFW_KEY_DOWN - 262>(states) == GLFW_PRESS) {  // DOWN
         if ((std::get<2>(this->camera) + rotation) * (180 / glm::pi<float>()) < 50.f) {
             rotation = delta_time * RotationTarget;
             angles = glm::vec3(glm::rotate(glm::mat4(1.0f), std::get<1>(this->camera), glm::vec3(.0f, .0f, 1.0f)) * glm::vec4(.0f, 1.0f, .0f, .0f));
 
             std::get<2>(this->camera) += rotation;
         }
-    } else if (this->key_states[GLFW_KEY_PAGE_UP].second == GLFW_PRESS || this->key_states[GLFW_KEY_PAGE_UP].second == GLFW_REPEAT) {  // ZOOM IN
-        std::get<3>(this->camera) = std::min(std::get<3>(this->camera) + .0005f, 1.0f);
-    } else if (this->key_states[GLFW_KEY_PAGE_DOWN].second == GLFW_PRESS || this->key_states[GLFW_KEY_PAGE_DOWN].second == GLFW_REPEAT) {  // ZOOM OUT
+    } else if (std::get<GLFW_KEY_PAGE_UP - 262>(states) == GLFW_PRESS) {  // ZOOM IN
+        std::get<3>(this->camera) = std::min(std::get<3>(this->camera) + .0005f, 0.6f);
+    } else if (std::get<GLFW_KEY_PAGE_DOWN - 262>(states) == GLFW_PRESS) {  // ZOOM OUT
         std::get<3>(this->camera) -= .0005f;
     }
     std::get<0>(this->camera) = glm::vec3(glm::rotate(glm::mat4(1.0f), rotation, angles) * glm::vec4(std::get<0>(this->camera), 0.0f));
@@ -586,4 +597,7 @@ void MipmapDemo::beforeCommandBuffersUpdate() {
 
     // Update clock
     this->clock = std::chrono::system_clock::now();
+
+    // Save states
+    this->direction_last_states = states;
 }

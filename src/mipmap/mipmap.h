@@ -24,8 +24,10 @@ using pixel_t = unsigned char;
 
 class MipmapDemo : public ao::vulkan::GLFWEngine {
    public:
+    std::tuple<int, int, int, int, int, int> direction_last_states;
     std::chrono::time_point<std::chrono::system_clock> clock;
-    bool clock_start = false;
+    bool engine_start = false;
+    int toggle_last_state;
 
     std::vector<TexturedVertex> vertices;
     std::vector<u32> indices;
@@ -50,7 +52,7 @@ class MipmapDemo : public ao::vulkan::GLFWEngine {
      */
     void setUpTexture();
 
-    virtual void onKeyEventCallback(GLFWwindow* window, int key, int scancode, int action, int mods) override;
+    void initVulkan() override;
     void freeVulkan() override;
     vk::RenderPass createRenderPass() override;
     void createPipelines() override;

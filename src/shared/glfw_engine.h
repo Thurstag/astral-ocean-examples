@@ -23,6 +23,7 @@
 
 #include "command_buffer/graphics_primary_command_buffer.h"
 #include "metrics/metric_module.h"
+#include "scheduler/task_scheduler.h"
 #include "utilities/glfw.h"
 
 namespace ao::vulkan {
@@ -46,28 +47,6 @@ namespace ao::vulkan {
         static void OnFramebufferSizeCallback(GLFWwindow* window, int width, int height);
 
         /**
-         * @brief Define callback on key event
-         *
-         * @param window Window
-         * @param key Key code
-         * @param scancode Scan code
-         * @param action Action
-         * @param mods Mods
-         */
-        static void OnKeyEventCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
-
-        /**
-         * @brief Define callback on key event
-         *
-         * @param window Window
-         * @param key Key code
-         * @param scancode Scan code
-         * @param action Action
-         * @param mods Mods
-         */
-        virtual void onKeyEventCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
-
-        /**
          * @brief Load pipeline cache
          *
          * @param file File
@@ -89,8 +68,8 @@ namespace ao::vulkan {
         std::unique_ptr<CommandPool> secondary_command_pool;
         GLFWwindow* window;
 
-        std::map<u64, std::pair<u64, u64>> key_states;
         std::unique_ptr<MetricModule> metrics;
+        TaskScheduler scheduler;
 
         std::shared_ptr<DeviceAllocator> device_uniform_allocator;
         std::shared_ptr<HostAllocator> host_uniform_allocator;

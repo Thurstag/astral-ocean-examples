@@ -7,7 +7,7 @@
 #define GLM_FORCE_RADIANS 1
 
 #include <ao/core/exception/exception.h>
-#include <ao/core/logger/logger.h>
+#include <ao/core/logging/log.h>
 #include <ao/vulkan/engine/settings.h>
 
 #include "texture_array.h"
@@ -15,10 +15,8 @@
 struct Main {};
 
 int main(int argc, char* argv[]) {
+    // Init logger
     ao::core::Logger::Init();
-
-    // Get LOGGER
-    ao::core::Logger LOGGER = ao::core::Logger::GetInstance<Main>();
 
     // Define settings
     std::shared_ptr<ao::vulkan::EngineSettings> settings = std::make_shared<ao::vulkan::EngineSettings>();
@@ -36,13 +34,13 @@ int main(int argc, char* argv[]) {
         // Run engine
         engine->run();
     } catch (ao::core::Exception& e) {
-        LOGGER << ao::core::Logger::Level::fatal << e;
+        LOG_MSG(fatal) << e;
         exception_thrown = true;
     } catch (std::exception& e) {
-        LOGGER << ao::core::Logger::Level::fatal << ao::core::Exception(e.what(), false);
+        LOG_MSG(fatal) << ao::core::Exception(e.what(), false);
         exception_thrown = true;
     } catch (...) {
-        LOGGER << ao::core::Logger::Level::fatal << "Unknown exception";
+        LOG_MSG(fatal) << "Unknown exception";
         exception_thrown = true;
     }
 

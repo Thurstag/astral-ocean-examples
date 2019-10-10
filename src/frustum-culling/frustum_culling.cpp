@@ -19,55 +19,29 @@
 
 static constexpr char const* CullingEnableKey = "culling.enable";
 
-void FrustumDemo::onKeyEventCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-    ao::vulkan::GLFWEngine::onKeyEventCallback(window, key, scancode, action, mods);
-
-    // Toggle culling
-    if (key == GLFW_KEY_T && action == GLFW_PRESS) {
-        this->settings_->get<bool>(CullingEnableKey) = !this->settings_->get<bool>(CullingEnableKey);
-
-        // Update draw commands/dispatch buffers
-        for (size_t i = 0; i < this->swapchain->size(); i++) {
-            this->draw_command_buffer->at(i) = vk::DrawIndexedIndirectCommand(this->indices_count, INSTANCE_COUNT);
-        }
-        this->draw_command_buffer->invalidate(0, this->draw_command_buffer->size());
-
-        // Toggle gpu(compute) metric
-        if (this->settings_->get<bool>(CullingEnableKey)) {
-            this->metrics->add("GPU(Compute)", new ao::vulkan::DurationCommandBufferMetric<std::milli, 2>(
-                                                   "ms", std::make_pair(this->device, this->metrics->timestampQueryPool())));
-        } else {
-            this->metrics->remove("GPU(Compute)");
-        }
-
-        this->LOGGER << ao::core::Logger::Level::debug
-                     << fmt::format("Frustum culling: {}", this->settings_->get<bool>(CullingEnableKey) ? "On" : "Off");
-    }
-}
-
 void FrustumDemo::createSemaphores() {
-    this->semaphores = ao::vulkan::SemaphoreContainer(this->device->logical());
+    this->semaphores = std::make_unique<ao::vulkan::SemaphoreContainer>(this->device->logical());
 
     // Create semaphores
-    this->semaphores.resize(5 * this->swapchain->size());
+    this->semaphores->resize(5 * this->swapchain->size());
     for (size_t i = 0; i < this->swapchain->size(); i++) {
         vk::Semaphore acquire = this->device->logical()->createSemaphore(vk::SemaphoreCreateInfo());
         vk::Semaphore render = this->device->logical()->createSemaphore(vk::SemaphoreCreateInfo());
         vk::Semaphore compute = this->device->logical()->createSemaphore(vk::SemaphoreCreateInfo());
 
         // Fill container
-        this->semaphores[(ao::vulkan::semaphore::AcquireImage * this->swapchain->size()) + i].signals.push_back(acquire);
+        this->semaphores->at(ao::vulkan::semaphore::AcquireImage * this->swapchain->size() + i).signals.push_back(acquire);
 
-        this->semaphores[(ao::vulkan::semaphore::ComputeProcess * this->swapchain->size()) + i].signals.push_back(compute);
+        this->semaphores->at(ao::vulkan::semaphore::ComputeProcess * this->swapchain->size() + i).signals.push_back(compute);
 
-        this->semaphores[(ao::vulkan::semaphore::GraphicProcessAfterCompute * this->swapchain->size()) + i].waits.push_back(acquire);
-        this->semaphores[(ao::vulkan::semaphore::GraphicProcessAfterCompute * this->swapchain->size()) + i].waits.push_back(compute);
-        this->semaphores[(ao::vulkan::semaphore::GraphicProcessAfterCompute * this->swapchain->size()) + i].signals.push_back(render);
+        this->semaphores->at(ao::vulkan::semaphore::GraphicProcessAfterCompute * this->swapchain->size() + i).waits.push_back(acquire);
+        this->semaphores->at(ao::vulkan::semaphore::GraphicProcessAfterCompute * this->swapchain->size() + i).waits.push_back(compute);
+        this->semaphores->at(ao::vulkan::semaphore::GraphicProcessAfterCompute * this->swapchain->size() + i).signals.push_back(render);
 
-        this->semaphores[(ao::vulkan::semaphore::GraphicProcess * this->swapchain->size()) + i].waits.push_back(acquire);
-        this->semaphores[(ao::vulkan::semaphore::GraphicProcess * this->swapchain->size()) + i].signals.push_back(render);
+        this->semaphores->at(ao::vulkan::semaphore::GraphicProcess * this->swapchain->size() + i).waits.push_back(acquire);
+        this->semaphores->at(ao::vulkan::semaphore::GraphicProcess * this->swapchain->size() + i).signals.push_back(render);
 
-        this->semaphores[(ao::vulkan::semaphore::PresentImage * this->swapchain->size()) + i].waits.push_back(render);
+        this->semaphores->at(ao::vulkan::semaphore::PresentImage * this->swapchain->size() + i).waits.push_back(render);
     }
 }
 
@@ -112,6 +86,35 @@ void FrustumDemo::initVulkan() {
     this->createMetrics();
     this->metrics->add("GPU(Compute)", new ao::vulkan::DurationCommandBufferMetric<std::milli, 2>(
                                            "ms", std::make_pair(this->device, this->metrics->timestampQueryPool())));
+
+    // Schedule input listener
+    this->scheduler.schedule(60, [&]() {
+        auto state = glfwGetKey(window, GLFW_KEY_T);
+
+        // Toggle culling
+        if (this->key_last_state == GLFW_RELEASE && state == GLFW_PRESS) {
+            this->settings_->get<bool>(CullingEnableKey) = !this->settings_->get<bool>(CullingEnableKey);
+
+            // Update draw commands/dispatch buffers
+            for (size_t i = 0; i < this->swapchain->size(); i++) {
+                this->draw_command_buffer->at(i) = vk::DrawIndexedIndirectCommand(this->indices_count, INSTANCE_COUNT);
+            }
+            this->draw_command_buffer->invalidate(0, this->draw_command_buffer->size());
+
+            // Toggle gpu(compute) metric
+            if (this->settings_->get<bool>(CullingEnableKey)) {
+                this->metrics->add("GPU(Compute)", new ao::vulkan::DurationCommandBufferMetric<std::milli, 2>(
+                                                       "ms", std::make_pair(this->device, this->metrics->timestampQueryPool())));
+            } else {
+                this->metrics->remove("GPU(Compute)");
+            }
+
+            LOG_MSG(debug) << fmt::format("Frustum culling: {}", this->settings_->get<bool>(CullingEnableKey) ? "On" : "Off");
+        }
+
+        // Save state
+        this->key_last_state = state;
+    });
 }
 
 void FrustumDemo::render() {
@@ -139,11 +142,11 @@ void FrustumDemo::render() {
         /* COMPUTE PART */
         if (this->settings_->get<bool>(CullingEnableKey, true)) {
             auto sem_index = (ao::vulkan::semaphore::ComputeProcess * this->swapchain->size()) + this->current_frame;
-            vk::SubmitInfo submit_info(static_cast<u32>(this->semaphores[sem_index].waits.size()),
-                                       this->semaphores[sem_index].waits.empty() ? nullptr : this->semaphores[sem_index].waits.data(), nullptr, 3,
-                                       &this->primary_compute_command_buffers[this->swapchain->frameIndex() * 3],
-                                       static_cast<u32>(this->semaphores[sem_index].signals.size()),
-                                       this->semaphores[sem_index].signals.empty() ? nullptr : this->semaphores[sem_index].signals.data());
+            vk::SubmitInfo submit_info(static_cast<u32>(this->semaphores->at(sem_index).waits.size()),
+                                       this->semaphores->at(sem_index).waits.empty() ? nullptr : this->semaphores->at(sem_index).waits.data(),
+                                       nullptr, 3, &this->primary_compute_command_buffers[this->swapchain->frameIndex() * 3],
+                                       static_cast<u32>(this->semaphores->at(sem_index).signals.size()),
+                                       this->semaphores->at(sem_index).signals.empty() ? nullptr : this->semaphores->at(sem_index).signals.data());
 
             // Submit command buffers
             this->device->queues()->at(vk::to_string(vk::QueueFlagBits::eCompute)).value.submit(submit_info, nullptr);
@@ -158,11 +161,11 @@ void FrustumDemo::render() {
                                                                                   : ao::vulkan::semaphore::GraphicProcess) *
                               this->swapchain->size()) +
                              this->current_frame;
-            vk::SubmitInfo submit_info(static_cast<u32>(this->semaphores[sem_index].waits.size()),
-                                       this->semaphores[sem_index].waits.empty() ? nullptr : this->semaphores[sem_index].waits.data(),
+            vk::SubmitInfo submit_info(static_cast<u32>(this->semaphores->at(sem_index).waits.size()),
+                                       this->semaphores->at(sem_index).waits.empty() ? nullptr : this->semaphores->at(sem_index).waits.data(),
                                        &pipeline_stage, 1, &this->swapchain->currentCommand(),
-                                       static_cast<u32>(this->semaphores[sem_index].signals.size()),
-                                       this->semaphores[sem_index].signals.empty() ? nullptr : this->semaphores[sem_index].signals.data());
+                                       static_cast<u32>(this->semaphores->at(sem_index).signals.size()),
+                                       this->semaphores->at(sem_index).signals.empty() ? nullptr : this->semaphores->at(sem_index).signals.data());
 
             // Reset fence
             this->device->logical()->resetFences(fence);
@@ -489,16 +492,16 @@ void FrustumDemo::createVulkanBuffers() {
 
     // Load
     ObjFile model;
-    this->LOGGER << ao::core::Logger::Level::trace << "=== Start loading model ===";
+    LOG_MSG(trace) << "=== Start loading model ===";
     if (!objParseFile(model, "assets/models/rock.obj")) {
         throw ao::core::Exception("Error during model loading");
     }
     this->indices_count = static_cast<u32>(model.f_size / 3);
 
-    this->LOGGER << ao::core::Logger::Level::trace << fmt::format("Vertex count: {}", this->indices_count);
+    LOG_MSG(trace) << fmt::format("Vertex count: {}", this->indices_count);
 
     // Prepare vector
-    this->LOGGER << ao::core::Logger::Level::trace << "Filling vectors with model's data";
+    LOG_MSG(trace) << "Filling vectors with model's data";
     std::vector<MeshOptVertex> opt_vertices(this->indices_count);
 
     // Build vertices vector
@@ -522,7 +525,7 @@ void FrustumDemo::createVulkanBuffers() {
     }
 
     // Optimize mesh
-    this->LOGGER << ao::core::Logger::Level::trace << "Optimize mesh";
+    LOG_MSG(trace) << "Optimize mesh";
     std::vector<u32> remap_indices(this->indices_count);
     this->vertices_count = meshopt_generateVertexRemap(remap_indices.data(), nullptr, this->indices_count, opt_vertices.data(), this->indices_count,
                                                        sizeof(MeshOptVertex));
@@ -537,16 +540,16 @@ void FrustumDemo::createVulkanBuffers() {
     meshopt_optimizeVertexFetch(remap_vertices.data(), this->indices.data(), this->indices_count, remap_vertices.data(), vertices_count,
                                 sizeof(MeshOptVertex));
 
-    this->LOGGER << ao::core::Logger::Level::trace << fmt::format("Vertex count afer optimization: {}", vertices_count);
+    LOG_MSG(trace) << fmt::format("Vertex count afer optimization: {}", vertices_count);
 
     // Convert into TexturedVertex
-    this->LOGGER << ao::core::Logger::Level::trace << "Convert MeshOptVertex -> TexturedVertex";
+    LOG_MSG(trace) << "Convert MeshOptVertex -> TexturedVertex";
     this->vertices.resize(vertices_count);
     for (size_t i = 0; i < vertices_count; i++) {
         vertices[i] = {{remap_vertices[i].px, remap_vertices[i].py, remap_vertices[i].pz}, {remap_vertices[i].tx, remap_vertices[i].ty}};
     }
 
-    this->LOGGER << ao::core::Logger::Level::trace << "=== Model loading end ===";
+    LOG_MSG(trace) << "=== Model loading end ===";
 
     // Create vertices & indices
     this->model_buffer = std::make_unique<ao::vulkan::Vector<char>>(

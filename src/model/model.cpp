@@ -185,16 +185,16 @@ void ModelDemo::createVulkanBuffers() {
 
     // Load
     ObjFile model;
-    this->LOGGER << ao::core::Logger::Level::trace << "=== Start loading model ===";
+    LOG_MSG(trace) << "=== Start loading model ===";
     if (!objParseFile(model, "assets/models/chalet.obj")) {
         throw ao::core::Exception("Error during model loading");
     }
     this->indices_count = static_cast<u32>(model.f_size / 3);
 
-    this->LOGGER << ao::core::Logger::Level::trace << fmt::format("Vertex count: {}", this->indices_count);
+    LOG_MSG(trace) << fmt::format("Vertex count: {}", this->indices_count);
 
     // Prepare vector
-    this->LOGGER << ao::core::Logger::Level::trace << "Filling vectors with model's data";
+    LOG_MSG(trace) << "Filling vectors with model's data";
     std::vector<MeshOptVertex> opt_vertices(this->indices_count);
 
     // Build vertices vector
@@ -218,7 +218,7 @@ void ModelDemo::createVulkanBuffers() {
     }
 
     // Optimize mesh
-    this->LOGGER << ao::core::Logger::Level::trace << "Optimize mesh";
+    LOG_MSG(trace) << "Optimize mesh";
     std::vector<u32> remap_indices(this->indices_count);
     this->vertices_count = meshopt_generateVertexRemap(remap_indices.data(), nullptr, this->indices_count, opt_vertices.data(), this->indices_count,
                                                        sizeof(MeshOptVertex));
@@ -233,16 +233,16 @@ void ModelDemo::createVulkanBuffers() {
     meshopt_optimizeVertexFetch(remap_vertices.data(), this->indices.data(), this->indices_count, remap_vertices.data(), vertices_count,
                                 sizeof(MeshOptVertex));
 
-    this->LOGGER << ao::core::Logger::Level::trace << fmt::format("Vertex count afer optimization: {}", vertices_count);
+    LOG_MSG(trace) << fmt::format("Vertex count afer optimization: {}", vertices_count);
 
     // Convert into TexturedVertex
-    this->LOGGER << ao::core::Logger::Level::trace << "Convert MeshOptVertex -> TexturedVertex";
+    LOG_MSG(trace) << "Convert MeshOptVertex -> TexturedVertex";
     this->vertices.resize(vertices_count);
     for (size_t i = 0; i < vertices_count; i++) {
         vertices[i] = {{remap_vertices[i].px, remap_vertices[i].py, remap_vertices[i].pz}, {remap_vertices[i].tx, remap_vertices[i].ty}};
     }
 
-    this->LOGGER << ao::core::Logger::Level::trace << "=== Model loading end ===";
+    LOG_MSG(trace) << "=== Model loading end ===";
 
     // Create vertices & indices
     this->model_buffer = std::make_unique<ao::vulkan::Vector<char>>(
@@ -385,9 +385,9 @@ void ModelDemo::createSecondaryCommandBuffers() {
 }
 
 void ModelDemo::beforeCommandBuffersUpdate() {
-    if (!this->clock_start) {
+    if (!this->engine_start) {
         this->clock = std::chrono::system_clock::now();
-        this->clock_start = true;
+        this->engine_start = true;
 
         // Init uniform buffers
         for (size_t i = 0; i < this->swapchain->size(); i++) {

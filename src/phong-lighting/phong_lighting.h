@@ -25,6 +25,7 @@ using pixel_t = unsigned char;
 class PhongLightingDemo : public ao::vulkan::GLFWEngine {
    public:
     std::chrono::time_point<std::chrono::system_clock> startup_clock;
+    std::tuple<int, int, int, int, int, int> direction_last_states;
     std::chrono::time_point<std::chrono::system_clock> clock;
     bool clock_start = false;
 

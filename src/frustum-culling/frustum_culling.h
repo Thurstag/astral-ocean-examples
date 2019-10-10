@@ -34,6 +34,7 @@ class FrustumDemo : public ao::vulkan::GLFWEngine {
    public:
     std::chrono::time_point<std::chrono::system_clock> clock;
     bool clock_start = false;
+    int key_last_state;
 
     std::vector<TexturedVertex> vertices;
     std::vector<u32> indices;
@@ -53,10 +54,9 @@ class FrustumDemo : public ao::vulkan::GLFWEngine {
     std::vector<vk::CommandBuffer> primary_compute_command_buffers;
     std::vector<ComputeCommandBuffer*> compute_command_buffers;
 
-    explicit FrustumDemo(std::shared_ptr<ao::vulkan::EngineSettings> settings) : ao::vulkan::GLFWEngine(settings){};
+    explicit FrustumDemo(std::shared_ptr<ao::vulkan::EngineSettings> settings) : ao::vulkan::GLFWEngine(settings), key_last_state(GLFW_RELEASE){};
     virtual ~FrustumDemo() = default;
 
-    virtual void onKeyEventCallback(GLFWwindow* window, int key, int scancode, int action, int mods) override;
     void createSemaphores() override;
     void freeVulkan() override;
     void initVulkan() override;

@@ -25,7 +25,7 @@ using pixel_t = unsigned char;
 class ModelDemo : public ao::vulkan::GLFWEngine {
    public:
     std::chrono::time_point<std::chrono::system_clock> clock;
-    bool clock_start = false;
+    bool engine_start = false;
 
     std::vector<TexturedVertex> vertices;
     std::vector<u32> indices;
