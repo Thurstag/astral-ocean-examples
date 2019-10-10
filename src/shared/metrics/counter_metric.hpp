@@ -23,7 +23,7 @@ namespace ao::vulkan {
          *
          * @param default Default value
          */
-        CounterMetric(Type default) : count(default), old(default), default(default){};
+        CounterMetric(Type default_) : count(default_), old(default_), default_(default_){};
 
         /**
          * @brief Destroy the CounterMetric object
@@ -55,7 +55,7 @@ namespace ao::vulkan {
                 this->old = count;
 
                 this->clock = std::chrono::system_clock::now();
-                this->count = this->default;
+                this->count = this->default_;
             }
         }
 
@@ -65,7 +65,7 @@ namespace ao::vulkan {
 
        protected:
         std::chrono::time_point<std::chrono::system_clock> clock;
-        Type default;
+        Type default_;
         Type count;
         Type old;
     };
@@ -80,8 +80,8 @@ namespace ao::vulkan {
     template<class Period, class Type, size_t Index = 0>
     class CounterCommandBufferMetric : public CounterMetric<Period, Type> {
        public:
-        CounterCommandBufferMetric(Type default, std::pair<std::shared_ptr<ao::vulkan::Device>, vk::QueryPool> module)
-            : CounterMetric(default), module(module) {}
+        CounterCommandBufferMetric(Type default_, std::pair<std::shared_ptr<ao::vulkan::Device>, vk::QueryPool> module_)
+            : CounterMetric<Period, Type>(default_), module_(module_) {}
 
         void increment() = delete;
 
@@ -90,7 +90,7 @@ namespace ao::vulkan {
 
             // Get results
             ao::vulkan::utilities::vkAssert(
-                this->module.first->logical()->getQueryPoolResults(this->module.second, Index, 1, sizeof(u64), &result, sizeof(u64),
+                this->module_.first->logical()->getQueryPoolResults(this->module_.second, Index, 1, sizeof(u64), &result, sizeof(u64),
                                                                    vk::QueryResultFlagBits::e64 | vk::QueryResultFlagBits::eWait),
                 "Fail to get query results");
 
@@ -109,6 +109,6 @@ namespace ao::vulkan {
         }
 
        private:
-        std::pair<std::shared_ptr<ao::vulkan::Device>, vk::QueryPool> module;
+        std::pair<std::shared_ptr<ao::vulkan::Device>, vk::QueryPool> module_;
     };
 }  // namespace ao::vulkan

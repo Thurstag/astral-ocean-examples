@@ -22,3 +22,7 @@
 	path = submodules/glm
 	url = https://github.com/g-truc/glm.git
 	ignore = dirty
+[submodule "submodules/tbb"]
+	path = submodules/tbb
+	url = https://github.com/wjakob/tbb.git
+	ignore = dirty

@@ -4,7 +4,11 @@
 
 #pragma once
 
-#include <execution>
+#if defined(__GNUC__) && (__GNUC___ < 9)
+#    include "tbb/parallel_for_each.h"
+#else
+#    include <execution>
+#endif
 
 #include "command_buffer.hpp"
 
@@ -80,18 +84,34 @@ namespace ao::vulkan {
 
                 switch (this->policy) {
                     case ExecutionPolicy::eParallel:
+#if defined(__GNUC__) && (__GNUC___ < 9)
+                        tbb::parallel_for_each(this->to_update.begin(), this->to_update.end(),
+                                               [&](auto command_buffer) { command_buffer->update(inheritance_info, swapchain_extent, frame_index); });
+#else
                         std::for_each(std::execution::par, this->to_update.begin(), this->to_update.end(),
                                       [&](auto command_buffer) { command_buffer->update(inheritance_info, swapchain_extent, frame_index); });
+#endif
                         break;
 
                     case ExecutionPolicy::eParallelUnsequenced:
+#if defined(__GNUC__) && (__GNUC___ < 9)
+                        tbb::parallel_for_each(this->to_update.begin(), this->to_update.end(),
+                                               [&](auto command_buffer) { command_buffer->update(inheritance_info, swapchain_extent, frame_index); });
+#else
                         std::for_each(std::execution::par_unseq, this->to_update.begin(), this->to_update.end(),
                                       [&](auto command_buffer) { command_buffer->update(inheritance_info, swapchain_extent, frame_index); });
+#endif
                         break;
 
                     case ExecutionPolicy::eSequenced:
+#if defined(__GNUC__) && (__GNUC___ < 9)
+                        for (auto command_buffer : this->to_update) {
+                            command_buffer->update(inheritance_info, swapchain_extent, frame_index);
+                        }
+#else
                         std::for_each(std::execution::seq, this->to_update.begin(), this->to_update.end(),
                                       [&](auto command_buffer) { command_buffer->update(inheritance_info, swapchain_extent, frame_index); });
+#endif
                         break;
 
                     default:

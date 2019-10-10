@@ -4,7 +4,11 @@
 
 #include "task_scheduler.h"
 
-#include <execution>
+#if defined(__GNUC__) && (__GNUC___ < 9)
+#    include "tbb/parallel_for_each.h"
+#else
+#    include <execution>
+#endif
 
 ao::vulkan::TaskScheduler::TaskScheduler() : running(false), tasks_mutex(std::make_unique<std::mutex>()) {}
 
@@ -27,7 +31,11 @@ void ao::vulkan::TaskScheduler::run() {
                 while (running) {
                     mutex.lock();
                     {
+#if defined(__GNUC__) && (__GNUC___ < 9)
+                        tbb::parallel_for_each(tasks.begin(), tasks.end(), [](auto task) { task(); });
+#else
                         std::for_each(std::execution::par_unseq, tasks.begin(), tasks.end(), [](auto task) { task(); });
+#endif
                     }
                     mutex.unlock();
 
@@ -60,7 +68,11 @@ void ao::vulkan::TaskScheduler::schedule(u16 tick_rate, std::function<void()> ta
                 while (running) {
                     mutex.lock();
                     {
+#if defined(__GNUC__) && (__GNUC___ < 9)
+                        tbb::parallel_for_each(tasks.begin(), tasks.end(), [](auto task) { task(); });
+#else
                         std::for_each(std::execution::par_unseq, tasks.begin(), tasks.end(), [](auto task) { task(); });
+#endif
                     }
                     mutex.unlock();
 

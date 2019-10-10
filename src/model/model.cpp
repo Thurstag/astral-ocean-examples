@@ -4,7 +4,11 @@
 
 #include "model.h"
 
-#include <execution>
+#if defined(__GNUC__) && (__GNUC___ < 9)
+#    include "tbb/parallel_for_each.h"
+#else
+#    include <execution>
+#endif
 
 #include <ao/vulkan/pipeline/graphics_pipeline.h>
 #include <ao/vulkan/utilities/device.h>
@@ -249,10 +253,19 @@ void ModelDemo::createVulkanBuffers() {
         sizeof(TexturedVertex) * this->vertices.size() + sizeof(u32) * this->indices.size(), this->device_allocator,
         vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eIndexBuffer);
 
+#if defined(__GNUC__) && (__GNUC___ < 9)
+    for (size_t i = 0; i < this->vertices.size(); i++) {
+        *(reinterpret_cast<TexturedVertex*>(&this->model_buffer->at(0)) + i) = this->vertices[i];
+    }
+    for (size_t i = 0; i < this->indices.size(); i++) {
+        *(reinterpret_cast<u32*>(&this->model_buffer->at(sizeof(TexturedVertex) * this->vertices.size())) + i) = this->indices[i];
+    }
+#else
     std::copy(std::execution::par_unseq, this->vertices.data(), this->vertices.data() + this->vertices.size(),
               reinterpret_cast<TexturedVertex*>(&this->model_buffer->at(0)));
     std::copy(std::execution::par_unseq, this->indices.data(), this->indices.data() + this->indices.size(),
               reinterpret_cast<u32*>(&this->model_buffer->at(sizeof(TexturedVertex) * this->vertices.size())));
+#endif
     this->model_buffer->invalidate(0, this->model_buffer->size());
 
     this->device_allocator->freeHost(this->model_buffer->info());
@@ -280,7 +293,11 @@ void ModelDemo::createVulkanBuffers() {
     ao::vulkan::Vector<pixel_t> texture_buffer(texture_width * texture_height * 4, this->host_allocator, vk::BufferUsageFlagBits::eTransferSrc);
 
     auto range = boost::irange<u64>(0, texture_buffer.size());
+#if defined(__GNUC__) && (__GNUC___ < 9)
+    tbb::parallel_for_each(range.begin(), range.end(), [&](auto i) { texture_buffer[i] = pixels[i]; });
+#else
     std::for_each(std::execution::par_unseq, range.begin(), range.end(), [&](auto i) { texture_buffer[i] = pixels[i]; });
+#endif
     texture_buffer.invalidate(0, texture_buffer.size());
 
     // Free image

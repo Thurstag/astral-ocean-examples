@@ -4,7 +4,11 @@
 
 #include "mipmap.h"
 
-#include <execution>
+#if defined(__GNUC__) && (__GNUC___ < 9)
+#    include "tbb/parallel_for_each.h"
+#else
+#    include <execution>
+#endif
 
 #include <ao/vulkan/pipeline/graphics_pipeline.h>
 #include <ao/vulkan/utilities/device.h>
@@ -41,8 +45,14 @@ void MipmapDemo::setUpTexture() {
 
         // Create buffer
         auto texture_buffer = ao::vulkan::Vector<u8>(texture_image.size() / sizeof(u8), this->host_allocator, vk::BufferUsageFlagBits::eTransferSrc);
+#if defined(__GNUC__) && (__GNUC___ < 9)
+        for (size_t i = 0; i < texture_buffer.size(); i++) {
+            texture_buffer.at(i) = *(static_cast<u8*>(texture_image.data()) + i);
+        }
+#else
         std::copy(std::execution::par_unseq, static_cast<u8*>(texture_image.data()), static_cast<u8*>(texture_image.data()) + texture_buffer.size(),
                   &texture_buffer.at(0));
+#endif
         texture_buffer.invalidate(0, texture_buffer.size());
 
         // Create image
@@ -98,8 +108,14 @@ void MipmapDemo::setUpTexture() {
         // Create buffer
         auto texture_buffer =
             ao::vulkan::Vector<u8>(texture_image[0].size() / sizeof(u8), this->host_allocator, vk::BufferUsageFlagBits::eTransferSrc);
+#if defined(__GNUC__) && (__GNUC___ < 9)
+        for (size_t i = 0; i < texture_buffer.size(); i++) {
+            texture_buffer.at(i) = *(static_cast<u8*>(texture_image.data()) + i);
+        }
+#else
         std::copy(std::execution::par_unseq, static_cast<u8*>(texture_image.data()), static_cast<u8*>(texture_image.data()) + texture_buffer.size(),
                   &texture_buffer.at(0));
+#endif
         texture_buffer.invalidate(0, texture_buffer.size());
 
         // Create image
@@ -445,10 +461,19 @@ void MipmapDemo::createVulkanBuffers() {
         sizeof(TexturedVertex) * this->vertices.size() + sizeof(u32) * this->indices.size(), this->device_allocator,
         vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eIndexBuffer);
 
+#if defined(__GNUC__) && (__GNUC___ < 9)
+    for (size_t i = 0; i < this->vertices.size(); i++) {
+        *(reinterpret_cast<TexturedVertex*>(&this->model_buffer->at(0)) + i) = this->vertices[i];
+    }
+    for (size_t i = 0; i < this->indices.size(); i++) {
+        *(reinterpret_cast<u32*>(&this->model_buffer->at(sizeof(TexturedVertex) * this->vertices.size())) + i) = this->indices[i];
+    }
+#else
     std::copy(std::execution::par_unseq, this->vertices.data(), this->vertices.data() + this->vertices.size(),
               reinterpret_cast<TexturedVertex*>(&this->model_buffer->at(0)));
     std::copy(std::execution::par_unseq, this->indices.data(), this->indices.data() + this->indices.size(),
               reinterpret_cast<u32*>(&this->model_buffer->at(sizeof(TexturedVertex) * this->vertices.size())));
+#endif
     this->model_buffer->invalidate(0, this->model_buffer->size());
 
     this->device_allocator->freeHost(this->model_buffer->info());

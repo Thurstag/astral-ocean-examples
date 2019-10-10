@@ -45,6 +45,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Define project name
 project(${AO_EX_PROJECT_NAME} VERSION ${AO_EX_PROJECT_VERSION})
 
+# TODO: Remove when gcc9.1 is global
+if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "9.1" AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+	set(SUBMODULES "${SUBMODULES};tbb")
+endif()
+
 # Include headers
 include_directories("${AO_EX_SUBMODULES_DIR}/astral-ocean/submodules/")
 
@@ -73,7 +78,7 @@ endforeach()
 # Add submodules
 foreach(SUBMODULE ${SUBMODULES})
 	list(FIND SUBMODULES_BUILD_EXCLUDE ${SUBMODULE} _index)
-	
+
 	if(EXISTS "${AO_EX_SUBMODULES_DIR}/${SUBMODULE}/CMakeLists.txt" AND ${_index} EQUAL -1)
 		add_subdirectory("${AO_EX_SUBMODULES_DIR}/${SUBMODULE}")
 		message("${SUBMODULE} submodule will be built")

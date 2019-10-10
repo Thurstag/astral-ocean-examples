@@ -4,7 +4,11 @@
 
 #include "phong_lighting.h"
 
-#include <execution>
+#if defined(__GNUC__) && (__GNUC___ < 9)
+#    include "tbb/parallel_for_each.h"
+#else
+#    include <execution>
+#endif
 
 #include <ao/vulkan/pipeline/graphics_pipeline.h>
 #include <ao/vulkan/utilities/device.h>

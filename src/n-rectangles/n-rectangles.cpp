@@ -4,7 +4,11 @@
 
 #include "n-rectangles.h"
 
-#include <execution>
+#if defined(__GNUC__) && (__GNUC___ < 9)
+#    include "tbb/parallel_for_each.h"
+#else
+#    include <execution>
+#endif
 
 #include <ao/vulkan/pipeline/graphics_pipeline.h>
 #include <ao/vulkan/utilities/device.h>
@@ -339,6 +343,15 @@ void RectanglesDemo::beforeCommandBuffersUpdate() {
 
     if (this->swapchain->state() == ao::vulkan::SwapchainState::eReset) {
         auto range = boost::irange<u64>(0, this->ubo_buffer->size());
+#if defined(__GNUC__) && (__GNUC___ < 9)
+        tbb::parallel_for_each(range.begin(), range.end(), [&](auto i) {
+            auto& ubo = this->ubo_buffer->at(i);
+
+            ubo.proj = glm::perspective(glm::radians(45.0f), this->swapchain->extent().width / static_cast<float>(this->swapchain->extent().height),
+                                        0.1f, 10.0f);
+            ubo.proj[1][1] *= -1;  // Adapt for vulkan
+        });
+#else
         std::for_each(std::execution::par_unseq, range.begin(), range.end(), [&](auto i) {
             auto& ubo = this->ubo_buffer->at(i);
 
@@ -346,15 +359,25 @@ void RectanglesDemo::beforeCommandBuffersUpdate() {
                                         0.1f, 10.0f);
             ubo.proj[1][1] *= -1;  // Adapt for vulkan
         });
+#endif
     }
 
     // Update uniform buffers
     auto range = boost::irange<u64>(0, RECTANGLE_COUNT);
+#if defined(__GNUC__) && (__GNUC___ < 9)
+    tbb::parallel_for_each(range.begin(), range.end(), [&](auto i) {
+        auto& ubo = this->ubo_buffer->at((i * this->swapchain->size()) + this->swapchain->frameIndex());
+
+        ubo.rotation = glm::rotate(glm::mat4(1.0f), delta_time * glm::radians(this->rotations[i].first), this->rotations[i].second);
+        ubo.scale = (0.25f * glm::cos(delta_time)) + 0.75f;
+    });
+#else
     std::for_each(std::execution::par_unseq, range.begin(), range.end(), [&](auto i) {
         auto& ubo = this->ubo_buffer->at((i * this->swapchain->size()) + this->swapchain->frameIndex());
 
         ubo.rotation = glm::rotate(glm::mat4(1.0f), delta_time * glm::radians(this->rotations[i].first), this->rotations[i].second);
         ubo.scale = (0.25f * glm::cos(delta_time)) + 0.75f;
     });
+#endif
     this->ubo_buffer->invalidate(0, this->ubo_buffer->size());
 }

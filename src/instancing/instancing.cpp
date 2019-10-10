@@ -4,7 +4,11 @@
 
 #include "instancing.h"
 
-#include <execution>
+#if defined(__GNUC__) && (__GNUC___ < 9)
+#    include "tbb/parallel_for_each.h"
+#else
+#    include <execution>
+#endif
 
 #include <ao/vulkan/pipeline/graphics_pipeline.h>
 #include <ao/vulkan/utilities/device.h>
@@ -300,12 +304,21 @@ void InstancingDemo::beforeCommandBuffersUpdate() {
     // Update instance data
     auto range =
         boost::irange<u64>(INSTANCE_COUNT * this->swapchain->frameIndex(), (INSTANCE_COUNT * this->swapchain->frameIndex()) + INSTANCE_COUNT);
+#if defined(__GNUC__) && (__GNUC___ < 9)
+    tbb::parallel_for_each(range.begin(), range.end(), [&](auto i) {
+        auto& instance = this->instance_buffer->at(i);
+
+        instance.rotation = glm::rotate(glm::mat4(1.0f), delta_time * glm::radians(this->rotations[i]), glm::vec3(.0f, 1.0f, 1.0f));
+        instance.position_and_scale = {.0f, .0f, .0f, (0.25f * glm::cos(delta_time)) + 0.75f};
+    });
+#else
     std::for_each(std::execution::par_unseq, range.begin(), range.end(), [&](auto i) {
         auto& instance = this->instance_buffer->at(i);
 
         instance.rotation = glm::rotate(glm::mat4(1.0f), delta_time * glm::radians(this->rotations[i]), glm::vec3(.0f, 1.0f, 1.0f));
         instance.position_and_scale = {.0f, .0f, .0f, (0.25f * glm::cos(delta_time)) + 0.75f};
     });
+#endif
     this->instance_buffer->invalidate(INSTANCE_COUNT * this->swapchain->frameIndex(), INSTANCE_COUNT);
 
     if (this->swapchain->state() == ao::vulkan::SwapchainState::eReset) {
